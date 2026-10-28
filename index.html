@@ -311,6 +311,96 @@ body.in-game { overflow: hidden; }
 .legal { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; color: var(--muted); font-size: 12px; max-width: 80ch; }
 .legal p { margin: 0; line-height: 1.5; }
 .legal a { color: var(--brass); }
+
+/* ---------- deck actions on setup */
+.deckacts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.store-note { margin-left: auto; }
+.ds-links { display: flex; gap: 14px; margin-top: 4px; }
+.tag.mine { background: var(--brass); color: var(--brass-ink); }
+.acts.row { flex-direction: row; flex-wrap: wrap; }
+.btn.danger { border-color: var(--bad); color: var(--bad); }
+.btn.danger:hover:not(:disabled) { background: var(--bad); color: #1c0905; }
+
+/* ---------- builder: search column + deck column; tabs swap them on phones */
+.builder { height: 100%; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.bd-head { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 10px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px)); background: var(--mat-2); border-bottom: 1px solid var(--line); }
+.bd-name { flex: 1 1 200px; min-width: 0; font-family: var(--f-display); font-size: 20px; background: transparent; color: var(--ink); border: 1px solid transparent; border-radius: 8px; padding: 4px 8px; }
+.bd-name:hover, .bd-name:focus { border-color: var(--line); background: var(--mat); outline: none; }
+.seg { display: inline-flex; background: var(--mat); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.seg button { padding: 5px 12px; border-radius: 7px; font-size: 14px; color: var(--muted); }
+.seg button.on { background: var(--mat-3); color: var(--brass); box-shadow: inset 0 0 0 1px var(--brass); }
+.bd-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.bd-saved { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.bd-saved.warn { color: var(--bad); }
+.bd-status { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--mat); }
+.bd-count { font-family: var(--f-num); font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bd-count b { color: var(--ink); font-size: 17px; }
+.bd-count.good b { color: var(--good); }
+.vchip { font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.vchip.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 50%, transparent); }
+.vchip.warn { color: var(--brass); border-color: var(--brass); }
+.vchip.bad { color: var(--bad); border-color: var(--bad); }
+.issues { flex-basis: 100%; margin: 2px 0 0; padding-left: 18px; display: grid; gap: 3px; font-size: 13.5px; max-width: 80ch; }
+.issues li.error { color: #f3b0a4; } .issues li.warn { color: #e6cf98; }
+.bd-tabs { display: none; }
+.bd-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); min-height: 0; }
+.bd-search, .bd-deck { min-height: 0; overflow-y: auto; }
+.bd-search { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+.bd-filters { position: sticky; top: 0; z-index: 2; background: var(--mat); padding: 10px 12px; display: grid; gap: 8px; border-bottom: 1px solid var(--line); }
+.bd-filters input[type=search] { width: 100%; }
+.bd-frow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13.5px; color: var(--muted); }
+.bd-results { padding: 6px 8px 24px; display: grid; gap: 2px; align-content: start; }
+.res-count { padding: 2px 6px 4px; }
+.bd-res { display: grid; grid-template-columns: minmax(0, 1fr) auto 2.2em 2.4em; gap: 8px; align-items: center; padding: 3px 4px 3px 0; border-radius: 8px; }
+.bd-res:hover { background: var(--mat-2); }
+.bd-rmain { display: grid; text-align: left; padding: 5px 6px; min-width: 0; }
+.r-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-type { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-cost { display: inline-flex; gap: 1px; flex-wrap: nowrap; }
+.r-qty { font-family: var(--f-num); font-size: 12px; text-align: center; background: var(--brass); color: var(--brass-ink); border-radius: 6px; padding: 1px 0; font-weight: 700; }
+.r-qty.empty { background: none; }
+.r-add { width: 2.2em; height: 2.2em; border-radius: 8px; background: var(--mat-3); border: 1px solid var(--line); font-size: 18px; line-height: 1; }
+.r-add:hover { border-color: var(--brass); color: var(--brass); }
+.more { justify-self: center; margin-top: 8px; }
+.hint { color: var(--muted); font-size: 14px; padding: 10px 6px; margin: 0; max-width: 60ch; }
+.bd-deck { padding: 6px 12px 28px; display: grid; gap: 14px; align-content: start; }
+.bd-group h4 { margin: 8px 0 4px; font-family: var(--f-display); font-weight: 400; color: var(--brass); font-size: 16px; }
+.bd-group.cmd { background: var(--mat-2); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px 8px; }
+.bd-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 2px 0; }
+.bd-rname { text-align: left; padding: 4px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; }
+.bd-rname:hover { color: var(--brass); }
+.bd-x { width: 26px; height: 26px; border-radius: 6px; color: var(--muted); }
+.bd-x:hover { color: var(--bad); }
+.stepper { display: inline-grid; grid-template-columns: 26px 2.2ch 26px; align-items: center; background: var(--mat); border: 1px solid var(--line); border-radius: 7px; }
+.stepper button { height: 26px; font-size: 16px; color: var(--muted); }
+.stepper button:hover { color: var(--brass); }
+.stepper span { font-family: var(--f-num); text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+.basics { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.basics .btn { display: inline-flex; gap: 4px; align-items: center; }
+.curve { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; height: 92px; align-items: end; }
+.cv { display: grid; grid-template-rows: 14px 1fr 16px; height: 100%; align-items: end; justify-items: center; }
+.cv i { width: 100%; max-width: 26px; background: var(--brass); border-radius: 3px 3px 0 0; min-height: 0; align-self: end; display: block; }
+.cv-n, .cv-l { font-family: var(--f-num); font-size: 11px; color: var(--muted); }
+.bd-legal { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); align-items: center; }
+.bigtext { width: 100%; min-height: 220px; resize: vertical; background: var(--mat); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-family: var(--f-num); font-size: 13px; line-height: 1.5; }
+.imp-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.filebtn { position: relative; overflow: hidden; }
+.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.unknown, .notes { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 14px; max-height: 40vh; overflow-y: auto; }
+.unknown { color: #f3b0a4; }
+.h4 { font-family: var(--f-display); font-weight: 400; margin: 0 0 4px; color: var(--brass); }
+@media (max-width: 760px) {
+  .bd-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); background: var(--mat-2); }
+  .bd-tabs button { padding: 10px; font-weight: 700; color: var(--muted); border-bottom: 2px solid transparent; }
+  .bd-tabs button.on { color: var(--brass); border-bottom-color: var(--brass); }
+  .bd-body { grid-template-columns: minmax(0, 1fr); }
+  .builder.tab-search .bd-deck, .builder.tab-deck .bd-search { display: none; }
+  .bd-search { border-right: 0; }
+  .bd-actions { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .bd-saved { margin-right: auto; }
+  .store-note { margin-left: 0; flex-basis: 100%; }
+}
 </style>
 </head>
 <body>
@@ -4535,6 +4625,465 @@ if (typeof module !== 'undefined') module.exports = MTG;
   };
 })(MTG);
 
+/* MTG — decks: card index, import parsing, validation, export, saved-deck storage. */
+(function (M) {
+  'use strict';
+  const D = {};
+  M.Decks = D;
+
+  // ---------------------------------------------------------------- names
+  function norm(s) {
+    return String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '')
+      .replace(/[’‘`´]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-')
+      .toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+  D.norm = norm;
+
+  // ---------------------------------------------------------------- card index
+  const COLOR_WORD = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' };
+  function colorsFromCost(cost, set) {
+    for (const tok of (cost || '').split(/\s+/)) for (const ch of tok.split('/')) if ('WUBRG'.includes(ch) && ch.length === 1) set.add(ch);
+  }
+  function infoOf(key, def) {
+    const f0 = def.faces[0];
+    const t = f0.t || '';
+    const colors = new Set(), ci = new Set();
+    for (const f of def.faces) {
+      const fc = new Set();
+      if (f.cl) for (const c of f.cl.split(',')) { const k = COLOR_WORD[c.trim().toLowerCase()]; if (k) fc.add(k); }
+      else colorsFromCost(f.c, fc);
+      if ((f.K || []).includes('Devoid')) fc.clear();
+      if (f === f0 || def.alt === 'Split') for (const c of fc) colors.add(c);
+      for (const c of fc) ci.add(c);
+      colorsFromCost(f.c, ci);
+      const text = (f.o || '').replace(/\([^)]*\)/g, '');
+      for (const m of text.matchAll(/\{([^}]+)\}/g)) for (const ch of m[1].split('/')) if ('WUBRG'.includes(ch) && ch.length === 1) ci.add(ch);
+    }
+    let cmc = M.manaValue(M.parseMana(f0.c));
+    if (def.alt === 'Split') cmc = def.faces.reduce((a, f) => a + M.manaValue(M.parseMana(f.c)), 0);
+    const words = t.split(/\s+/);
+    const isLand = words.includes('Land');
+    const kws = f0.K || [];
+    let partner = null;
+    for (const k of kws) {
+      if (k === 'Partner') partner = { kind: 'any' };
+      else if (k.startsWith('Partner with:')) partner = { kind: 'with', name: k.split(':')[1] };
+      else if (k.startsWith('Partner:')) partner = { kind: 'group', name: k.split(':')[1] };
+      else if (k === 'Choose a Background') partner = { kind: 'chooseBg' };
+      else if (k === "Doctor's companion") partner = { kind: 'companionOfDoctor' };
+    }
+    let limit = null;
+    for (const k of kws) {
+      if (/^A deck can have any number of cards named/.test(k)) limit = Infinity;
+      const m = /^DeckLimit:(\d+)/.exec(k); if (m) limit = +m[1];
+    }
+    if (words.includes('Basic') && isLand) limit = Infinity;
+    const legendary = words.includes('Legendary');
+    const creature = words.includes('Creature');
+    const background = legendary && /\bBackground\b/.test(t);
+    const doctor = creature && /\bDoctor\b/.test(t) && /\bTime Lord\b/.test(t);
+    const canCommand = (legendary && creature) || /can be your commander/i.test(f0.o || '');
+    const name = def.alt === 'Split' ? def.faces.map(f => f.n).join(' // ') : f0.n;
+    const L = def.L || '';
+    let group = 'Other';
+    if (creature) group = 'Creatures';
+    else if (words.includes('Planeswalker')) group = 'Planeswalkers';
+    else if (words.includes('Instant') || words.includes('Sorcery')) group = 'Instants & sorceries';
+    else if (isLand) group = 'Lands';
+    else if (words.includes('Artifact') || words.includes('Enchantment') || words.includes('Battle')) group = 'Artifacts & enchantments';
+    return {
+      key, name, def, type: t, cost: f0.c, cmc, colors, ci, isLand, legendary, creature, canCommand, background, doctor, partner, limit,
+      std: L.includes('s'), cmdBanned: L.includes('b'), group,
+      nameN: norm(name), textN: norm(def.faces.map(f => (f.o || '')).join(' ')), typeN: norm(def.faces.map(f => f.t || '').join(' ')),
+    };
+  }
+
+  const IDX = { byNorm: new Map(), info: new Map(), list: [], cards: null };
+  D.index = IDX;
+  D.indexCards = function (cards) {
+    IDX.cards = cards;
+    IDX.byNorm = new Map(); IDX.info = new Map(); IDX.list = [];
+    const byName = new Map();
+    for (const key of Object.keys(cards)) {
+      const def = cards[key];
+      const canon = def.alt === 'Split' ? def.faces.map(f => f.n).join(' // ') : def.faces[0].n;
+      let inf = byName.get(canon);
+      if (!inf) {
+        inf = infoOf(key, def);
+        byName.set(canon, inf);
+        IDX.list.push(inf);
+      }
+      IDX.info.set(key, inf);
+      const names = [key, inf.name, def.faces[0].n];
+      if (def.faces.length > 1) { names.push(def.faces.map(f => f.n).join(' // '), def.faces.map(f => f.n).join(' / '), def.faces.map(f => f.n).join('/')); }
+      for (const n of names) { const k = norm(n); if (!IDX.byNorm.has(k)) IDX.byNorm.set(k, key); }
+    }
+  };
+  D.info = key => IDX.info.get(key) || null;
+  D.resolve = function (raw) {
+    let n = norm(raw);
+    if (!n) return null;
+    const tries = [n, n.replace(/^a-/, ''), n.split(' // ')[0], n.split(' / ')[0], n.split('/')[0].trim(), n.replace(/\s*\(.*$/, ''), n.replace(/ - .*$/, '')];
+    for (const t of tries) { const k = IDX.byNorm.get(t); if (k) return k; }
+    return null;
+  };
+
+  // ---------------------------------------------------------------- import
+  const SECTION = [
+    [/^(commanders?|command zone|commander\(s\))$/i, 'commander'],
+    [/^(deck|main ?deck|main ?board|main|library|cards|creatures?|lands?|spells?|instants?|sorcer(y|ies)|artifacts?|enchantments?|planeswalkers?|battles?|other)$/i, 'main'],
+    [/^(sideboard|side ?board|sb)$/i, 'side'],
+    [/^(maybe ?board|maybe|considering|wishlist|tokens?|attractions?|stickers?)$/i, 'skip'],
+    [/^companions?$/i, 'companion'],
+  ];
+  function sectionOf(line) {
+    let l = line.trim().replace(/^(\/\/|#+)\s*/, '').replace(/[:\s]+$/, '').replace(/\s*\(\d+\)$/, '');
+    for (const [re, s] of SECTION) if (re.test(l)) return s;
+    return null;
+  }
+
+  D.parseText = function (text) {
+    text = String(text || '').replace(/\r\n?/g, '\n');
+    if (/<\s*Deck[\s>]/i.test(text) && /<\s*Cards\b/i.test(text)) return D.parseDek(text);
+    const res = { name: '', commander: [], main: [], side: [], unknown: [], notes: [], companion: [] };
+    const add = (bucket, n, key) => {
+      const arr = res[bucket];
+      const ex = arr.find(x => x[1] === key);
+      if (ex) ex[0] += n; else arr.push([n, key]);
+    };
+    let sec = 'main';
+    let sawBlankAfterFirst = false, firstBlock = [], blockIndex = 0, linesInBlock = 0;
+    const lines = text.split('\n');
+    // CSV export (Moxfield/Archidekt/Deckbox): header with Count/Quantity and Name
+    const head = (lines[0] || '').toLowerCase();
+    if (/(^|,)"?(count|quantity|qty)"?(,|$)/.test(head) && /(^|,)"?(name|card name)"?(,|$)/.test(head)) return parseCSV(lines, res);
+    let aboutMode = false;
+    for (let raw of lines) {
+      let line = raw.trim();
+      if (!line) { if (linesInBlock) { blockIndex++; linesInBlock = 0; } aboutMode = false; continue; }
+      if (/^about$/i.test(line)) { aboutMode = true; continue; }
+      if (aboutMode) { const m = /^name\s+(.+)$/i.exec(line); if (m) res.name = m[1].trim(); continue; }
+      const nm = /^(?:\/\/\s*)?(?:name|deck name|title)\s*[:=]\s*(.+)$/i.exec(line);
+      if (nm && !/^\d/.test(line)) { res.name = nm[1].trim(); continue; }
+      const s = sectionOf(line);
+      if (s && !/^\d/.test(line)) { sec = s; continue; }
+      if (/^(\/\/|#)/.test(line)) continue;
+      let bucket = sec;
+      if (/^SB:\s*/i.test(line)) { bucket = 'side'; line = line.replace(/^SB:\s*/i, ''); }
+      const m = /^(\d+)\s*[xX]?\s+(.+)$/.exec(line) || /^()(\D.*)$/.exec(line);
+      if (!m) continue;
+      let n = m[1] ? parseInt(m[1], 10) : 1;
+      let name = m[2];
+      let isCmd = false;
+      if (/\*CMDR\*|\[\s*commander\b[^\]]*\]|\(\s*commander\s*\)|#\s*commander\b/i.test(name)) isCmd = true;
+      name = name
+        .replace(/\s*\[[^\]]*\]/g, '')                          // [Commander{top}] tags
+        .replace(/\s*\*[A-Z]+\*/g, '')                          // *F* *CMDR*
+        .replace(/\s+\^[^^]*\^/g, '')                          // ^tag^ (Archidekt colours)
+        .replace(/\s+#.*$/, '')                                 // #tags
+        .replace(/\s+\(([A-Za-z0-9_]{2,8})\)(\s+[A-Za-z0-9★†\-]+)?\s*$/, '') // (SET) 123
+        .replace(/\s+<[^>]*>\s*$/, '')
+        .trim();
+      if (!name) continue;
+      const key = D.resolve(name);
+      if (!key) { res.unknown.push({ n, name, line: raw.trim() }); continue; }
+      if (bucket === 'skip') continue;
+      if (isCmd) bucket = 'commander';
+      if (bucket === 'companion') { res.companion.push(key); continue; }
+      add(bucket === 'commander' ? 'commander' : bucket, n, key);
+      linesInBlock++;
+    }
+    res.commander = res.commander.map(x => x[1]);
+    finishImport(res);
+    return res;
+  };
+
+  function parseCSV(lines, res) {
+    const split = l => { const out = []; let cur = '', q = false; for (let i = 0; i < l.length; i++) { const c = l[i]; if (q) { if (c === '"' && l[i + 1] === '"') { cur += '"'; i++; } else if (c === '"') q = false; else cur += c; } else if (c === '"') q = true; else if (c === ',') { out.push(cur); cur = ''; } else cur += c; } out.push(cur); return out; };
+    const head = split(lines[0]).map(h => h.trim().toLowerCase());
+    const ci = head.findIndex(h => ['count', 'quantity', 'qty'].includes(h));
+    const ni = head.findIndex(h => ['name', 'card name'].includes(h));
+    const bi = head.findIndex(h => ['board', 'section', 'category', 'categories'].includes(h));
+    const add = (bucket, n, key) => { const arr = res[bucket]; const ex = arr.find(x => x[1] === key); if (ex) ex[0] += n; else arr.push([n, key]); };
+    for (const l of lines.slice(1)) {
+      if (!l.trim()) continue;
+      const cols = split(l);
+      const n = parseInt(cols[ci], 10) || 1, name = (cols[ni] || '').trim();
+      if (!name) continue;
+      const board = bi >= 0 ? (cols[bi] || '').toLowerCase() : '';
+      const key = D.resolve(name);
+      if (!key) { res.unknown.push({ n, name, line: l }); continue; }
+      if (/commander/.test(board)) res.commander.push([1, key]);
+      else if (/side/.test(board)) add('side', n, key);
+      else if (/maybe|token/.test(board)) continue;
+      else add('main', n, key);
+    }
+    res.commander = res.commander.map(x => x[1]);
+    finishImport(res);
+    return res;
+  }
+
+  D.parseDek = function (xml) {
+    const res = { name: '', commander: [], main: [], side: [], unknown: [], notes: [], companion: [] };
+    const add = (bucket, n, key) => { const arr = res[bucket]; const ex = arr.find(x => x[1] === key); if (ex) ex[0] += n; else arr.push([n, key]); };
+    const attr = (s, a) => { const m = new RegExp(a + '\\s*=\\s*"([^"]*)"', 'i').exec(s); return m ? m[1] : ''; };
+    for (const m of xml.matchAll(/<\s*Cards\b([^>]*)\/?>/gi)) {
+      const a = m[1];
+      const name = attr(a, 'Name').replace(/&amp;/g, '&').replace(/&apos;|&#39;/g, "'").replace(/&quot;/g, '"');
+      const n = parseInt(attr(a, 'Quantity'), 10) || 1;
+      const side = /true/i.test(attr(a, 'Sideboard'));
+      const cmd = /commander/i.test(attr(a, 'Annotation')) || attr(a, 'Annotation') === '1';
+      const key = D.resolve(name);
+      if (!key) { res.unknown.push({ n, name, line: name }); continue; }
+      if (cmd) res.commander.push([1, key]); else add(side ? 'side' : 'main', n, key);
+    }
+    res.commander = res.commander.map(x => x[1]);
+    finishImport(res);
+    return res;
+  };
+
+  function finishImport(res) {
+    // Commanders listed in the main deck too: take them out
+    for (const c of res.commander) {
+      const i = res.main.findIndex(x => x[1] === c);
+      if (i >= 0) { res.main[i][0]--; if (res.main[i][0] <= 0) res.main.splice(i, 1); }
+    }
+    const total = res.main.reduce((a, x) => a + x[0], 0) + res.commander.length;
+    const singleton = res.main.every(([n, k]) => n === 1 || (D.info(k) && D.info(k).limit === Infinity));
+    let mode = res.commander.length ? 'commander' : (total >= 95 && singleton ? 'commander' : 'constructed');
+    if (mode === 'commander' && !res.commander.length) {
+      // Commander not marked: a lone legendary in the sideboard, or the first card if it can lead
+      const sideCmd = res.side.filter(([, k]) => D.info(k) && D.info(k).canCommand);
+      if (sideCmd.length >= 1 && sideCmd.length <= 2 && res.side.length <= 2) {
+        res.commander = sideCmd.map(x => x[1]); res.side = res.side.filter(x => !res.commander.includes(x[1]));
+        res.notes.push(`Used ${res.commander.join(' + ')} from the sideboard as the commander.`);
+      } else {
+        const first = res.main[0];
+        if (first && first[0] === 1 && D.info(first[1]) && D.info(first[1]).canCommand) {
+          res.commander = [first[1]]; res.main.shift();
+          res.notes.push(`No commander was marked, so ${first[1]} (the first card) was made the commander. Change it in the builder if that's wrong.`);
+        } else res.notes.push('No commander was marked. Pick one in the builder.');
+      }
+    }
+    if (mode === 'commander' && res.side.length) { res.notes.push(`${res.side.reduce((a, x) => a + x[0], 0)} sideboard card(s) were left out.`); }
+    else if (res.side.length) res.notes.push(`${res.side.reduce((a, x) => a + x[0], 0)} sideboard card(s) were kept aside; sideboards aren't used in games.`);
+    if (res.companion.length) res.notes.push(`Companion ${res.companion.join(', ')} isn't used in games and was left out.`);
+    res.mode = mode;
+  }
+
+  // ---------------------------------------------------------------- deck helpers
+  D.count = deck => deck.main.reduce((a, x) => a + x[0], 0) + (deck.mode === 'commander' ? deck.commander.length : 0);
+  D.qty = (deck, key) => { const r = deck.main.find(x => x[1] === key); return r ? r[0] : 0; };
+  D.setQty = function (deck, key, n) {
+    const i = deck.main.findIndex(x => x[1] === key);
+    if (n <= 0) { if (i >= 0) deck.main.splice(i, 1); return; }
+    if (i >= 0) deck.main[i][0] = n; else deck.main.push([n, key]);
+  };
+  D.identity = function (deck) {
+    const s = new Set();
+    for (const c of deck.commander) { const i = D.info(c); if (i) for (const x of i.ci) s.add(x); }
+    return s;
+  };
+  D.colorsOf = function (deck) {
+    if (deck.mode === 'commander' && deck.commander.length) return ['W', 'U', 'B', 'R', 'G'].filter(c => D.identity(deck).has(c));
+    const cnt = { W: 0, U: 0, B: 0, R: 0, G: 0 };
+    let tot = 0;
+    for (const [n, k] of deck.main) { const i = D.info(k); if (!i || i.isLand) continue; for (const c of i.colors) { cnt[c] += n; tot += n; } }
+    return Object.keys(cnt).filter(c => cnt[c] / (tot || 1) > 0.12);
+  };
+
+  function pairOK(a, b) {
+    const A = D.info(a), B = D.info(b);
+    if (!A || !B) return false;
+    const pa = A.partner, pb = B.partner;
+    if (pa && pb && pa.kind === 'any' && pb.kind === 'any') return true;
+    if (pa && pa.kind === 'with' && norm(pa.name) === B.nameN) return true;
+    if (pb && pb.kind === 'with' && norm(pb.name) === A.nameN) return true;
+    if (pa && pb && pa.kind === 'group' && pb.kind === 'group' && pa.name === pb.name) return true;
+    if ((pa && pa.kind === 'chooseBg' && B.background) || (pb && pb.kind === 'chooseBg' && A.background)) return true;
+    if ((pa && pa.kind === 'companionOfDoctor' && B.doctor) || (pb && pb.kind === 'companionOfDoctor' && A.doctor)) return true;
+    return false;
+  }
+  D.canAddSecondCommander = (deck, key) => deck.commander.length === 1 && pairOK(deck.commander[0], key);
+
+  // issues: {level: 'error'|'warn', text, cards?}
+  D.validate = function (deck) {
+    const issues = [];
+    const cmd = deck.mode === 'commander';
+    const total = D.count(deck);
+    const list = (arr) => arr.slice(0, 6).join(', ') + (arr.length > 6 ? ` and ${arr.length - 6} more` : '');
+    const missing = deck.main.filter(([, k]) => !D.info(k)).map(x => x[1]).concat(deck.commander.filter(k => !D.info(k)));
+    if (missing.length) issues.push({ level: 'error', text: `Unknown cards: ${list(missing)}.` });
+    if (cmd) {
+      if (!deck.commander.length) issues.push({ level: 'error', text: 'Choose a commander.' });
+      for (const c of deck.commander) { const i = D.info(c); if (i && !i.canCommand && !(i.background && deck.commander.length === 2)) issues.push({ level: 'error', text: `${c} can't be a commander (it isn't a legendary creature).` }); }
+      if (deck.commander.length > 2) issues.push({ level: 'error', text: 'A deck can have at most two commanders.' });
+      if (deck.commander.length === 2 && !pairOK(deck.commander[0], deck.commander[1])) issues.push({ level: 'error', text: `${deck.commander[0]} and ${deck.commander[1]} can't be paired as commanders (they need Partner, Choose a Background, or similar).` });
+      if (total !== 100) issues.push({ level: total < 100 ? 'error' : 'error', text: `Commander decks have exactly 100 cards including the commander (this one has ${total}).` });
+      const dup = deck.main.filter(([n, k]) => n > 1 && !(D.info(k) && D.info(k).limit && n <= D.info(k).limit)).map(x => x[1]);
+      const dupCmd = deck.main.filter(([, k]) => deck.commander.includes(k)).map(x => x[1]);
+      if (dup.length) issues.push({ level: 'error', text: `Only one copy of each card is allowed (except basic lands): ${list(dup)}.` });
+      if (dupCmd.length) issues.push({ level: 'error', text: `Your commander is also in the deck: ${list(dupCmd)}.` });
+      if (deck.commander.length) {
+        const id = D.identity(deck);
+        const out = deck.main.filter(([, k]) => { const i = D.info(k); return i && [...i.ci].some(c => !id.has(c)); }).map(x => x[1]);
+        if (out.length) issues.push({ level: 'error', text: `Outside your commander's colors: ${list(out)}.` });
+      }
+      const banned = deck.main.map(x => x[1]).concat(deck.commander).filter(k => D.info(k) && D.info(k).cmdBanned);
+      if (banned.length) issues.push({ level: 'error', text: `Banned in Commander: ${list(banned)}.` });
+    } else {
+      if (total < 60) issues.push({ level: 'error', text: `Standard decks need at least 60 cards (this one has ${total}).` });
+      const over = deck.main.filter(([n, k]) => { const i = D.info(k); const lim = i && i.limit != null ? i.limit : 4; return n > lim; }).map(x => x[1]);
+      if (over.length) issues.push({ level: 'error', text: `More than 4 copies: ${list(over)}.` });
+      const notStd = deck.main.filter(([, k]) => D.info(k) && !D.info(k).std).map(x => x[1]);
+      if (notStd.length) issues.push({ level: 'warn', text: `Not legal in current Standard: ${list(notStd)}.` });
+    }
+    return issues;
+  };
+  // the game can still run casual games with a near-legal deck
+  D.playable = function (deck) {
+    if (deck.main.some(([, k]) => !D.info(k))) return { ok: false, why: 'Remove the unknown cards first.' };
+    if (deck.mode === 'commander') {
+      if (!deck.commander.length) return { ok: false, why: 'Choose a commander first.' };
+      if (D.count(deck) < 60) return { ok: false, why: 'Add at least 60 cards to play.' };
+      return { ok: true };
+    }
+    if (D.count(deck) < 40) return { ok: false, why: 'Add at least 40 cards to play.' };
+    return { ok: true };
+  };
+
+  D.exportText = function (deck) {
+    const lines = [];
+    if (deck.mode === 'commander' && deck.commander.length) { lines.push('Commander'); for (const c of deck.commander) lines.push(`1 ${D.info(c) ? D.info(c).name : c}`); lines.push(''); }
+    lines.push('Deck');
+    const order = ['Creatures', 'Planeswalkers', 'Instants & sorceries', 'Artifacts & enchantments', 'Other', 'Lands'];
+    const rows = deck.main.slice().sort((a, b) => {
+      const A = D.info(a[1]), B = D.info(b[1]);
+      return (order.indexOf(A ? A.group : 'Other') - order.indexOf(B ? B.group : 'Other')) || ((A ? A.cmc : 0) - (B ? B.cmc : 0)) || a[1].localeCompare(b[1]);
+    });
+    for (const [n, k] of rows) lines.push(`${n} ${D.info(k) ? D.info(k).name : k}`);
+    if (deck.side && deck.side.length && deck.mode !== 'commander') { lines.push('', 'Sideboard'); for (const [n, k] of deck.side) lines.push(`${n} ${D.info(k) ? D.info(k).name : k}`); }
+    return lines.join('\n');
+  };
+
+  // Fill up to the target size with basics split by colored pips in the deck
+  const BASIC = { W: 'Plains', U: 'Island', B: 'Swamp', R: 'Mountain', G: 'Forest' };
+  D.fillLands = function (deck) {
+    const target = deck.mode === 'commander' ? 100 : 60;
+    let need = target - D.count(deck);
+    if (need <= 0) return 0;
+    const pips = { W: 0, U: 0, B: 0, R: 0, G: 0 };
+    for (const [n, k] of deck.main) { const i = D.info(k); if (!i || i.isLand) continue; for (const tok of (i.cost || '').split(/\s+/)) for (const ch of tok.split('/')) if (pips[ch] != null) pips[ch] += n; }
+    let cols = Object.keys(pips).filter(c => pips[c] > 0);
+    if (deck.mode === 'commander' && deck.commander.length) { const id = D.identity(deck); cols = cols.filter(c => id.has(c)); if (!cols.length) cols = [...id]; }
+    if (!cols.length) { D.setQty(deck, 'Wastes', D.qty(deck, 'Wastes') + need); return need; }
+    const tot = cols.reduce((a, c) => a + pips[c], 0) || cols.length;
+    const alloc = cols.map(c => [c, Math.floor(need * (pips[c] || 1) / tot)]);
+    let rem = need - alloc.reduce((a, x) => a + x[1], 0);
+    alloc.sort((a, b) => (pips[b[0]] || 0) - (pips[a[0]] || 0));
+    for (let i = 0; rem > 0; i = (i + 1) % alloc.length, rem--) alloc[i][1]++;
+    for (const [c, n] of alloc) if (n > 0 && IDX.info.has(BASIC[c])) D.setQty(deck, BASIC[c], D.qty(deck, BASIC[c]) + n);
+    return need;
+  };
+
+  D.newId = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  D.blank = mode => ({ id: D.newId(), name: mode === 'commander' ? 'New Commander deck' : 'New deck', mode, commander: [], main: [], side: [], created: Date.now(), updated: Date.now() });
+  D.clone = d => JSON.parse(JSON.stringify({ id: d.id, name: d.name, mode: d.mode, commander: d.commander || [], main: d.main || [], side: d.side || [], colors: d.colors || [], created: d.created || Date.now(), updated: d.updated || Date.now() }));
+
+  // ---------------------------------------------------------------- storage
+  // Account storage (claude.ai `db`, private per person) when available; this browser otherwise.
+  const LKEY = 'mtg.decks.v1';
+  const Store = { mode: 'local', decks: new Map(), listeners: [], ready: false, writing: new Map(), cloud: null };
+  D.store = Store;
+  function readLocal() { try { return JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch (e) { return {}; } }
+  function writeLocal(obj) { try { localStorage.setItem(LKEY, JSON.stringify(obj)); return true; } catch (e) { return false; } }
+  function emit() { for (const fn of Store.listeners) { try { fn(); } catch (e) { console.error(e); } } }
+  Store.onChange = fn => Store.listeners.push(fn);
+  Store.list = () => [...Store.decks.values()].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  Store.get = id => Store.decks.get(id) || null;
+
+  Store.init = async function () {
+    const local = readLocal();
+    for (const d of Object.values(local)) if (d && d.id) Store.decks.set(d.id, Object.assign(D.clone(d), { _where: 'local' }));
+    Store.ready = true;
+    emit();
+    if (typeof window === 'undefined' || !window.claude || typeof window.claude.use !== 'function') return;
+    try {
+      const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+      if (!db || !user) return;
+      const uid = await user.id();
+      if (!uid) return;
+      const col = db.doc('data/users/' + uid + '/profile').collection('decks');
+      Store.cloud = { db, col, ok: null };
+      col.onSnapshot(snap => {
+        const seen = new Set();
+        for (const doc of snap.docs) {
+          const d = doc.data();
+          if (!d || !d.id) continue;
+          seen.add(d.id);
+          const cur = Store.decks.get(d.id);
+          if (cur && cur._where === 'local' && (cur.updated || 0) > (d.updated || 0)) continue;
+          Store.decks.set(d.id, Object.assign(D.clone(d), { _where: 'cloud' }));
+        }
+        for (const [id, d] of Store.decks) if (d._where === 'cloud' && !seen.has(id) && !Store.writing.has(id)) Store.decks.delete(id);
+        if (snap.docs.length) { Store.cloud.ok = true; Store.mode = 'cloud'; }
+        emit();
+        migrateLocal();
+      }, () => { Store.cloud = null; Store.mode = 'local'; emit(); });
+    } catch (e) { /* stay local */ }
+  };
+  let migrating = false;
+  async function migrateLocal() {
+    if (migrating || !Store.cloud) return;
+    migrating = true;
+    try {
+      const local = readLocal();
+      for (const d of Object.values(local)) {
+        if (!d || !d.id) continue;
+        const ok = await cloudWrite(Object.assign({}, d));
+        if (!ok) break;
+        delete local[d.id]; writeLocal(local);
+        const cur = Store.decks.get(d.id); if (cur) cur._where = 'cloud';
+      }
+    } finally { migrating = false; emit(); }
+  }
+  async function cloudWrite(deck) {
+    if (!Store.cloud) return false;
+    const body = D.clone(deck);
+    const prev = Store.writing.get(deck.id) || Promise.resolve();
+    const p = prev.then(() => Store.cloud.col.doc(deck.id).set(body)).then(() => { if (Store.cloud) { Store.cloud.ok = true; Store.mode = 'cloud'; } return true; }, e => {
+      if (e && (e.code === 'invalid_argument' || e.code === 'not_granted' || e.code === 'revoked')) { Store.cloud = null; Store.mode = 'local'; }
+      return false;
+    });
+    Store.writing.set(deck.id, p);
+    const ok = await p;
+    if (Store.writing.get(deck.id) === p) Store.writing.delete(deck.id);
+    return ok;
+  }
+  Store.save = async function (deck) {
+    deck.updated = Date.now();
+    try { deck.colors = D.colorsOf(deck); } catch (e) { /* index not ready */ }
+    const copy = D.clone(deck);
+    if (Store.cloud) {
+      Store.decks.set(deck.id, Object.assign(copy, { _where: 'cloud' }));
+      emit();
+      if (await cloudWrite(deck)) return 'cloud';
+    }
+    const local = readLocal();
+    local[deck.id] = D.clone(deck);
+    const ok = writeLocal(local);
+    Store.decks.set(deck.id, Object.assign(D.clone(deck), { _where: 'local' }));
+    emit();
+    return ok ? 'local' : 'memory';
+  };
+  Store.remove = async function (id) {
+    Store.decks.delete(id);
+    const local = readLocal(); if (local[id]) { delete local[id]; writeLocal(local); }
+    emit();
+    if (Store.cloud) { try { await (Store.writing.get(id) || Promise.resolve()); await Store.cloud.col.doc(id).delete(); } catch (e) { /* ignore */ } }
+  };
+})(MTG);
+
 /* MTG — browser UI: deck browser, game table, human controller. */
 (function (M) {
   'use strict';
@@ -4562,7 +5111,36 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (saved) Object.assign(S, { mode: saved.mode || S.mode, life: saved.life || 40, speed: saved.speed || 1 });
     for (const d of DATA.decks) d._colors = deckColors(d);
     renderSetup();
+    M.Decks.store.onChange(() => {
+      if (G || (M.Builder && M.Builder.isOpen()) || !document.querySelector('.setup')) return;
+      const a = document.activeElement; if (a && a.id === 'deckSearch') return;
+      if (S.mine && S.mine.custom) { const f = M.Decks.store.get(S.mine.deckId); S.mine = f ? customView(f) : null; }
+      if (S.theirs && S.theirs.custom) { const f = M.Decks.store.get(S.theirs.deckId); S.theirs = f ? customView(f) : null; }
+      renderSetup();
+    });
+    M.Decks.store.init();
   }
+
+  // Full card pool (beyond the precons) for the builder, importer and custom decks
+  let allPromise = null;
+  function ensureAll() {
+    if (allPromise) return allPromise;
+    let toast = null;
+    const t = setTimeout(() => { toast = document.createElement('div'); toast.className = 'toast'; toast.textContent = 'Loading all 32,000 cards…'; document.body.appendChild(toast); }, 250);
+    allPromise = fetch('cards-more.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(more => {
+      for (const [k, v] of Object.entries(more.cards)) if (!DATA.cards[k]) DATA.cards[k] = v;
+      M.Decks.indexCards(DATA.cards);
+    }).catch(e => {
+      allPromise = null;
+      flash("Couldn't load the full card list. Check your connection and try again.");
+      throw e;
+    }).finally(() => { clearTimeout(t); if (toast) toast.remove(); });
+    return allPromise;
+  }
+  function customView(d) {
+    return { id: 'my:' + d.id, deckId: d.id, custom: true, name: d.name, mode: d.mode, commander: d.mode === 'commander' ? d.commander.slice() : [], main: d.main.map(x => x.slice()), type: 'custom', typeName: 'My deck', set: d.mode === 'commander' ? 'Commander' : 'Standard', date: new Date(d.updated || Date.now()).toISOString().slice(0, 10), _colors: d.colors || [] };
+  }
+  function customDecks() { return M.Decks.store.list().map(customView); }
 
   function deckColors(d) {
     const cnt = { W: 0, U: 0, B: 0, R: 0, G: 0 };
@@ -4604,11 +5182,13 @@ if (typeof module !== 'undefined') module.exports = MTG;
 
   // ---------------------------------------------------------------- setup screen
   const TYPE_GROUPS = {
-    constructed: [['all', 'All 60-card decks'], ['recent', 'Recent (2023+)'], ['starter', 'Starter & Welcome'], ['pw', 'Planeswalker decks'], ['challenger', 'Challenger decks'], ['intro', 'Intro packs'], ['theme', 'Theme decks'], ['duel', 'Duel decks'], ['event', 'Event & other']],
-    commander: [['all', 'All Commander precons'], ['recent', 'Recent (2023+)']],
+    constructed: [['all', 'All 60-card decks'], ['mine', 'My decks'], ['recent', 'Recent (2023+)'], ['starter', 'Starter & Welcome'], ['pw', 'Planeswalker decks'], ['challenger', 'Challenger decks'], ['intro', 'Intro packs'], ['theme', 'Theme decks'], ['duel', 'Duel decks'], ['event', 'Event & other']],
+    commander: [['all', 'All Commander decks'], ['mine', 'My decks'], ['recent', 'Recent (2023+)']],
   };
   function typeMatch(d, t) {
+    if (t === 'mine') return !!d.custom;
     if (t === 'all') return true;
+    if (d.custom) return false;
     if (t === 'recent') return d.date >= '2023';
     const ty = d.type;
     if (t === 'starter') return /starter|welcome|arena|game-night|sample|guild-kit|ssk/.test(ty);
@@ -4622,7 +5202,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
   function filteredDecks() {
     const q = S.q.trim().toLowerCase();
-    return DATA.decks.filter(d => {
+    return customDecks().concat(DATA.decks).filter(d => {
       if (d.mode !== S.mode) return false;
       if (!typeMatch(d, S.type)) return false;
       if (S.colors.size) { for (const c of S.colors) if (!d._colors.includes(c)) return false; }
@@ -4634,17 +5214,18 @@ if (typeof module !== 'undefined') module.exports = MTG;
         }
       }
       return true;
-    }).sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
+    }).sort((a, b) => (b.custom ? 1 : 0) - (a.custom ? 1 : 0) || (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name));
   }
 
   function renderSetup() {
     G = null;
     document.body.classList.remove('in-game');
     const list = filteredDecks();
-    const total = DATA.decks.filter(d => d.mode === S.mode).length;
+    const total = DATA.decks.filter(d => d.mode === S.mode).length + customDecks().filter(d => d.mode === S.mode).length;
     const mine = S.mine && S.mine.mode === S.mode ? S.mine : null;
     const theirs = S.theirs && S.theirs.mode === S.mode ? S.theirs : null;
     const shown = list.slice(0, 250);
+    S._playable = null;
     $('#app').innerHTML = `
     <div class="setup">
       <header class="setup-head">
@@ -4671,6 +5252,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         </div>
       </section>
       <section class="browser">
+        <div class="deckacts"><button class="btn" id="newDeckBtn">＋ New ${S.mode === 'commander' ? 'Commander' : 'Standard'} deck</button><button class="btn" id="importBtn">Import a deck list</button>${customDecks().length ? `<button class="btn ghost" id="myDecksBtn">My decks (${customDecks().length})</button>` : ''}<span class="muted small store-note">${M.Decks.store.mode === 'cloud' ? 'Your decks are saved to your account.' : 'Your decks are saved in this browser.'}</span></div>
         <div class="filters">
           <input id="deckSearch" type="search" placeholder="Search decks, sets, commanders or a card name" value="${esc(S.q)}" autocomplete="off">
           <select id="typeSel">${TYPE_GROUPS[S.mode].map(([v, l]) => `<option value="${v}" ${S.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -4687,27 +5269,34 @@ if (typeof module !== 'undefined') module.exports = MTG;
     bindSetup();
   }
   function deckSummary(d) {
-    return `<div class="ds"><div class="ds-name">${esc(d.name)}</div><div class="ds-meta">${colorPips(d)} ${esc(d.typeName)} · ${esc(d.set)} · ${esc((d.date || '').slice(0, 4))}</div>${d.commander.length ? `<div class="ds-cmd">${esc(d.commander.join(' + '))}</div>` : ''}<button class="link" data-view="${esc(d.id)}">View list</button></div>`;
+    const n = d.main.reduce((a, x) => a + x[0], 0) + d.commander.length;
+    const meta = d.custom ? `${colorPips(d)} My deck · ${n} cards` : `${colorPips(d)} ${esc(d.typeName)} · ${esc(d.set)} · ${esc((d.date || '').slice(0, 4))}`;
+    return `<div class="ds"><div class="ds-name">${esc(d.name)}</div><div class="ds-meta">${meta}</div>${d.commander.length ? `<div class="ds-cmd">${esc(d.commander.join(' + '))}</div>` : ''}<div class="ds-links"><button class="link" data-view="${esc(d.id)}">View list</button>${d.custom ? `<button class="link" data-edit="${esc(d.deckId)}">Edit deck</button>` : ''}</div></div>`;
   }
   function colorPips(d) { return `<span class="dpips">${(d._colors.length ? d._colors : ['C']).map(pip).join('')}</span>`; }
   function deckRow(d, mine, theirs) {
     const tag = mine && mine.id === d.id ? '<span class="tag you">You</span>' : theirs && theirs.id === d.id ? '<span class="tag ai">AI</span>' : '';
     return `<button class="drow" data-deck="${esc(d.id)}">
-      <span class="dr-main"><span class="dr-name">${esc(d.name)} ${tag}</span><span class="dr-sub">${d.commander.length ? esc(d.commander.join(' + ')) + ' · ' : ''}${esc(d.typeName)} · ${esc(d.set)}</span></span>
+      <span class="dr-main"><span class="dr-name">${esc(d.name)} ${tag}${d.custom ? '<span class="tag mine">Mine</span>' : ''}</span><span class="dr-sub">${d.commander.length ? esc(d.commander.join(' + ')) + ' · ' : ''}${d.custom ? `${d.main.reduce((a, x) => a + x[0], 0) + d.commander.length} cards · edited ${esc(d.date)}` : `${esc(d.typeName)} · ${esc(d.set)}`}</span></span>
       <span class="dr-side">${colorPips(d)}<span class="dr-year">${esc((d.date || '').slice(0, 4))}</span></span>
     </button>`;
   }
   function bindSetup() {
     document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; S.type = 'all'; S.mine = S.mine && S.mine.mode === S.mode ? S.mine : null; S.pick = 'mine'; renderSetup(); });
     document.querySelectorAll('[data-slot]').forEach(b => b.onclick = e => { if (e.target.closest('[data-view]')) return; S.pick = b.dataset.slot; renderSetup(); });
-    document.querySelectorAll('[data-view]').forEach(b => b.onclick = e => { e.stopPropagation(); showDeckList(DATA.decks.find(d => d.id === b.dataset.view)); });
+    const findDeck = id => DATA.decks.find(d => d.id === id) || customDecks().find(d => d.id === id);
+    document.querySelectorAll('[data-view]').forEach(b => b.onclick = async e => { e.stopPropagation(); const d = findDeck(b.dataset.view); if (d && d.custom) { try { await ensureAll(); } catch (er) { return; } } showDeckList(d); });
+    document.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); const d = M.Decks.store.get(b.dataset.edit); if (d) M.Builder.open(d).catch(() => {}); });
+    $('#newDeckBtn').onclick = () => M.Builder.newDeck(S.mode).catch(() => {});
+    $('#importBtn').onclick = () => M.Builder.openImport().catch(() => {});
+    const mdb = $('#myDecksBtn'); if (mdb) mdb.onclick = () => { S.type = 'mine'; renderSetup(); };
     const si = $('#deckSearch');
     let t = null;
     si.oninput = () => { clearTimeout(t); t = setTimeout(() => { S.q = si.value; const pos = si.selectionStart; renderSetup(); const n = $('#deckSearch'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 180); };
     $('#typeSel').onchange = e => { S.type = e.target.value; renderSetup(); };
     document.querySelectorAll('[data-color]').forEach(b => b.onclick = () => { const c = b.dataset.color; S.colors.has(c) ? S.colors.delete(c) : S.colors.add(c); renderSetup(); });
     document.querySelectorAll('[data-deck]').forEach(b => b.onclick = () => {
-      const d = DATA.decks.find(x => x.id === b.dataset.deck);
+      const d = findDeck(b.dataset.deck);
       if (S.pick === 'mine') { S.mine = d; S.pick = 'theirs'; } else { S.theirs = d; }
       renderSetup();
     });
@@ -4727,14 +5316,28 @@ if (typeof module !== 'undefined') module.exports = MTG;
       (groups[t] = groups[t] || []).push([n, name, f]);
     }
     const order = ['Creatures', 'Planeswalkers', 'Instants & sorceries', 'Other permanents', 'Lands', 'Other'];
-    let html = `<div class="sheet-head"><h3>${esc(d.name)}</h3><div class="muted">${esc(d.typeName)} · ${esc(d.set)} · ${esc(d.date)}</div></div><div class="dl">`;
+    let html = `<div class="sheet-head"><h3>${esc(d.name)}</h3><div class="muted">${esc(d.typeName)} · ${esc(d.set)} · ${esc(d.date)}</div></div>
+      <div class="acts row">${d.custom ? `<button class="btn primary" data-dlact="edit">Edit deck</button>` : `<button class="btn" data-dlact="copy">Copy to my decks and edit</button>`}</div><div class="dl">`;
     if (d.commander.length) html += `<div class="dl-g"><h4>Commander</h4>${d.commander.map(n => `<button class="dl-row" data-cardname="${esc(n)}"><span>1</span><span>${esc(n)}</span></button>`).join('')}</div>`;
     for (const k of order) if (groups[k]) {
       const tot = groups[k].reduce((a, x) => a + x[0], 0);
       html += `<div class="dl-g"><h4>${k} <span class="muted">${tot}</span></h4>${groups[k].map(([n, name, f]) => `<button class="dl-row" data-cardname="${esc(name)}"><span>${n}</span><span>${esc(name)}</span><span class="dl-cost">${f ? costHTML(f.cost) : ''}</span></button>`).join('')}</div>`;
     }
     html += '</div>';
-    openSheet(html, { onClick: e => { const b = e.target.closest('[data-cardname]'); if (b) { const c = DATA.cards[b.dataset.cardname]; if (c) openSheet(cardDetailHTML(null, c), { back: () => showDeckList(d) }); } } });
+    openSheet(html, { onClick: async e => {
+      const act = e.target.closest('[data-dlact]');
+      if (act) {
+        closeSheet();
+        if (act.dataset.dlact === 'edit') { const sd = M.Decks.store.get(d.deckId); if (sd) M.Builder.open(sd).catch(() => {}); return; }
+        try { await ensureAll(); } catch (er) { return; }
+        const nd = M.Decks.blank(d.mode);
+        nd.name = d.name + ' (copy)';
+        nd.commander = d.commander.map(n => M.Decks.resolve(n) || n);
+        nd.main = d.main.map(([n, name]) => [n, M.Decks.resolve(name) || name]);
+        M.Builder.open(nd).catch(() => {});
+        return;
+      }
+      const b = e.target.closest('[data-cardname]'); if (b) { const c = DATA.cards[b.dataset.cardname]; if (c) openSheet(cardDetailHTML(null, c), { back: () => showDeckList(d) }); } } });
   }
 
   // ---------------------------------------------------------------- sheets (modal)
@@ -4834,7 +5437,20 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
 
   // ---------------------------------------------------------------- start game
-  function startGame() {
+  async function startGame() {
+    if ((S.mine && S.mine.custom) || (S.theirs && S.theirs.custom)) {
+      try { await ensureAll(); } catch (e) { return; }
+      for (const side of ['mine', 'theirs']) {
+        const v = S[side];
+        if (!v || !v.custom) continue;
+        const d = M.Decks.store.get(v.deckId);
+        if (!d) { S[side] = null; continue; }
+        const p = M.Decks.playable(d);
+        if (!p.ok) { flash(`${d.name}: ${p.why}`); renderSetup(); return; }
+        S[side] = customView(d);
+      }
+      if (!S.mine) { renderSetup(); return; }
+    }
     const pool = DATA.decks.filter(d => d.mode === S.mode);
     const mine = S.mine;
     const theirs = S.theirs && S.theirs.mode === S.mode ? S.theirs : pool[Math.floor(Math.random() * pool.length)];
@@ -5313,7 +5929,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
 
   function flash(msg) {
-    const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg; document.body.appendChild(el);
+    document.querySelectorAll('.toast.flash').forEach(t => t.remove());
+    const el = document.createElement('div'); el.className = 'toast flash'; el.textContent = msg; document.body.appendChild(el);
     setTimeout(() => el.remove(), 1800);
   }
 
@@ -5357,7 +5974,446 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const ma = $('#mArt'); if (ma) ma.onchange = e => { M.Art.setOn(e.target.checked); renderGame(); };
   }
 
+  M.UIH = { esc, pip, costHTML, oracleHTML, openSheet, closeSheet, cardDetailHTML, flash, renderSetup, ensureAll, customView, S, data: () => DATA };
   window.addEventListener('DOMContentLoaded', boot);
+})(MTG);
+
+/* MTG — deck builder and importer screens. Uses helpers exported by ui.js as M.UIH. */
+(function (M) {
+  'use strict';
+  const D = M.Decks;
+  const H = () => M.UIH;
+  const $ = s => document.querySelector(s);
+  const GROUP_ORDER = ['Creatures', 'Planeswalkers', 'Instants & sorceries', 'Artifacts & enchantments', 'Other', 'Lands'];
+  const BASICS = [['W', 'Plains'], ['U', 'Island'], ['B', 'Swamp'], ['R', 'Mountain'], ['G', 'Forest'], ['C', 'Wastes']];
+  const TYPES = [['', 'Any type'], ['Creature', 'Creature'], ['Instant', 'Instant'], ['Sorcery', 'Sorcery'], ['Artifact', 'Artifact'], ['Enchantment', 'Enchantment'], ['Planeswalker', 'Planeswalker'], ['Land', 'Land'], ['Battle', 'Battle'], ['Legendary', 'Legendary'], ['commander', 'Can be a commander']];
+
+  let B = null; // builder state
+  let saveTimer = null;
+
+  // ---------------------------------------------------------------- entry points
+  M.Builder = {
+    async open(deck, opts) {
+      opts = opts || {};
+      await H().ensureAll();
+      deck = D.clone(deck);
+      B = {
+        deck, tab: 'deck', results: [], limit: 60,
+        f: { q: '', colors: new Set(), type: '', mv: '', std: deck.mode !== 'commander', inId: true },
+        saved: D.store.get(deck.id) ? 'saved' : 'new', issuesOpen: false,
+      };
+      if (deck.mode === 'commander' && !deck.commander.length) { B.f.type = 'commander'; B.tab = 'search'; }
+      if (!deck.main.length && deck.mode !== 'commander') B.tab = 'search';
+      render();
+      if (opts.importResult) showImportResult(opts.importResult);
+      if (B.saved === 'new') queueSave(0);
+    },
+    async openImport(intoDeck) { await H().ensureAll(); importSheet(intoDeck || null); },
+    async newDeck(mode) { await M.Builder.open(D.blank(mode)); },
+    isOpen: () => !!B,
+  };
+
+  // ---------------------------------------------------------------- saving
+  function queueSave(delay) {
+    B.saved = 'saving';
+    renderSaveState();
+    clearTimeout(saveTimer);
+    const deck = B.deck;
+    saveTimer = setTimeout(async () => {
+      const where = await D.store.save(deck);
+      if (B && B.deck === deck) { B.saved = where; renderSaveState(); }
+    }, delay == null ? 600 : delay);
+  }
+  function changed() { queueSave(); renderDeck(); renderStatus(); renderResults(); }
+  function saveLabel() {
+    switch (B.saved) {
+      case 'saving': return 'Saving…';
+      case 'cloud': return 'Saved to your account';
+      case 'local': return 'Saved in this browser';
+      case 'memory': return 'Not saved: this browser is blocking storage';
+      case 'saved': return D.store.mode === 'cloud' ? 'Saved to your account' : 'Saved in this browser';
+      default: return '';
+    }
+  }
+  function renderSaveState() { const el = $('#bdSaved'); if (el) { el.textContent = saveLabel(); el.classList.toggle('warn', B.saved === 'memory'); } }
+
+  // ---------------------------------------------------------------- render
+  function render() {
+    const { esc } = H();
+    const d = B.deck;
+    document.body.classList.remove('in-game');
+    $('#app').innerHTML = `
+    <div class="builder tab-${B.tab}">
+      <header class="bd-head">
+        <button class="btn ghost sm" id="bdBack">‹ Decks</button>
+        <input id="bdName" class="bd-name" value="${esc(d.name)}" aria-label="Deck name" maxlength="80" autocomplete="off">
+        <div class="seg" role="radiogroup" aria-label="Format">
+          <button class="${d.mode === 'constructed' ? 'on' : ''}" data-fmt="constructed" role="radio" aria-checked="${d.mode === 'constructed'}">Standard</button>
+          <button class="${d.mode === 'commander' ? 'on' : ''}" data-fmt="commander" role="radio" aria-checked="${d.mode === 'commander'}">Commander</button>
+        </div>
+        <div class="bd-actions"><span id="bdSaved" class="bd-saved"></span><button class="btn sm" id="bdMore" aria-label="More deck actions">⋯</button><button class="btn primary sm" id="bdPlay">Play</button></div>
+      </header>
+      <div class="bd-status" id="bdStatus"></div>
+      <div class="bd-tabs" role="tablist"><button data-tab="search" class="${B.tab === 'search' ? 'on' : ''}" role="tab">Add cards</button><button data-tab="deck" class="${B.tab === 'deck' ? 'on' : ''}" role="tab" id="bdDeckTab">Deck</button></div>
+      <div class="bd-body">
+        <section class="bd-search" aria-label="Card search">
+          <div class="bd-filters">
+            <input id="bdQ" type="search" placeholder="Search ${D.index.list.length.toLocaleString()} cards by name, type or rules text" autocomplete="off" value="${esc(B.f.q)}">
+            <div class="bd-frow">
+              <div class="colorchips" id="bdColors">${['W', 'U', 'B', 'R', 'G', 'C'].map(c => `<button class="cchip ${B.f.colors.has(c) ? 'on' : ''}" data-fc="${c}" aria-label="${c === 'C' ? 'Colorless' : M.COLOR_NAME[c]}" aria-pressed="${B.f.colors.has(c)}">${H().pip(c)}</button>`).join('')}</div>
+              <select id="bdType" aria-label="Card type">${TYPES.map(([v, l]) => `<option value="${v}" ${B.f.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+              <select id="bdMV" aria-label="Mana value"><option value="">Any mana value</option>${['0', '1', '2', '3', '4', '5', '6', '7+'].map(v => `<option value="${v}" ${B.f.mv === v ? 'selected' : ''}>MV ${v}</option>`).join('')}</select>
+            </div>
+            <div class="bd-frow" id="bdToggles"></div>
+          </div>
+          <div class="bd-results" id="bdResults"></div>
+        </section>
+        <section class="bd-deck" id="bdDeck" aria-label="Deck list"></section>
+      </div>
+    </div>`;
+    bind();
+    renderToggles(); renderStatus(); renderDeck(); renderResults(); renderSaveState();
+  }
+
+  function renderToggles() {
+    const d = B.deck;
+    const el = $('#bdToggles');
+    el.innerHTML = d.mode === 'commander'
+      ? `<label class="chk"><input type="checkbox" id="bdInId" ${B.f.inId ? 'checked' : ''} ${d.commander.length ? '' : 'disabled'}> Only my commander's colors</label>`
+      : `<label class="chk"><input type="checkbox" id="bdStd" ${B.f.std ? 'checked' : ''}> Standard-legal only</label>`;
+    const a = $('#bdInId'); if (a) a.onchange = e => { B.f.inId = e.target.checked; B.limit = 60; renderResults(); };
+    const s = $('#bdStd'); if (s) s.onchange = e => { B.f.std = e.target.checked; B.limit = 60; renderResults(); };
+  }
+
+  function renderStatus() {
+    const { pip, esc } = H();
+    const d = B.deck;
+    const total = D.count(d);
+    const target = d.mode === 'commander' ? 100 : 60;
+    const issues = D.validate(d);
+    const errs = issues.filter(i => i.level === 'error').length;
+    const fmt = d.mode === 'commander' ? 'Commander' : 'Standard';
+    const cols = d.mode === 'commander' && d.commander.length ? [...D.identity(d)] : D.colorsOf(d);
+    const chip = !issues.length ? `<span class="vchip ok">Legal for ${fmt}</span>` : `<button class="vchip ${errs ? 'bad' : 'warn'}" id="bdIssues" aria-expanded="${B.issuesOpen}">${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} ${B.issuesOpen ? '▴' : '▾'}</button>`;
+    $('#bdStatus').innerHTML = `
+      <span class="bd-count ${total === target || (d.mode !== 'commander' && total > target) ? 'good' : ''}"><b>${total}</b> / ${target}${d.mode === 'constructed' ? '+' : ''} cards</span>
+      <span class="dpips">${(cols.length ? cols : ['C']).map(pip).join('')}</span>
+      ${chip}
+      ${B.issuesOpen && issues.length ? `<ul class="issues">${issues.map(i => `<li class="${i.level}">${esc(i.text)}</li>`).join('')}</ul>` : ''}`;
+    const ib = $('#bdIssues'); if (ib) ib.onclick = () => { B.issuesOpen = !B.issuesOpen; renderStatus(); };
+    const dt = $('#bdDeckTab'); if (dt) dt.textContent = `Deck (${total})`;
+  }
+
+  function sortRows(rows) {
+    return rows.slice().sort((a, b) => {
+      const A = D.info(a[1]), Bi = D.info(b[1]);
+      return (A.cmc - Bi.cmc) || A.name.localeCompare(Bi.name);
+    });
+  }
+
+  function renderDeck() {
+    const { esc, costHTML } = H();
+    const d = B.deck;
+    const groups = {};
+    for (const row of d.main) { const i = D.info(row[1]); const g = i ? i.group : 'Other'; (groups[g] = groups[g] || []).push(row); }
+    let html = '';
+    if (d.mode === 'commander') {
+      const one = d.commander.length === 1 ? D.info(d.commander[0]) : null;
+      html += `<div class="bd-group cmd"><h4>Commander</h4>${d.commander.map(k => {
+        const i = D.info(k);
+        return `<div class="bd-row"><button class="bd-x" data-uncmd="${esc(k)}" aria-label="Remove ${esc(k)} as commander">✕</button><button class="bd-rname" data-info="${esc(k)}">${esc(i ? i.name : k)}</button><span class="r-cost">${i ? costHTML(M.parseMana(i.cost)) : ''}</span></div>`;
+      }).join('') || '<p class="hint">Search for a legendary creature, open it, and choose <b>Make commander</b>.</p>'}
+      ${one && one.partner ? `<p class="hint">${esc(one.name)} can have a ${one.partner.kind === 'chooseBg' ? 'Background' : one.partner.kind === 'companionOfDoctor' ? 'Doctor' : 'partner'}. Open that card and choose <b>Add as partner</b>.</p>` : ''}</div>`;
+    }
+    for (const g of GROUP_ORDER) {
+      const rows = groups[g];
+      if (!rows) continue;
+      const n = rows.reduce((a, x) => a + x[0], 0);
+      html += `<div class="bd-group"><h4>${g} <span class="muted">${n}</span></h4>${sortRows(rows).map(([q, k]) => {
+        const i = D.info(k);
+        return `<div class="bd-row"><div class="stepper"><button data-dec="${esc(k)}" aria-label="Remove one ${esc(k)}">−</button><span>${q}</span><button data-inc="${esc(k)}" aria-label="Add one ${esc(k)}">+</button></div><button class="bd-rname" data-info="${esc(k)}">${esc(i ? i.name : k)}</button><span class="r-cost">${i && !i.isLand ? costHTML(M.parseMana(i.cost)) : ''}</span></div>`;
+      }).join('')}</div>`;
+    }
+    if (!d.main.length) html += `<p class="hint">${d.mode === 'commander' ? 'Then add 99 more cards.' : 'Add cards from the search, or import a list from the ⋯ menu.'}</p>`;
+    // lands tools
+    html += `<div class="bd-group"><h4>Basic lands</h4><div class="basics">${BASICS.map(([c, n]) => `<button class="btn sm" data-inc="${n}" aria-label="Add a ${n}">${H().pip(c)} +1</button>`).join('')}</div>
+      <button class="btn sm" id="bdFill" ${D.count(d) >= (d.mode === 'commander' ? 100 : 60) ? 'disabled' : ''}>Fill to ${d.mode === 'commander' ? 100 : 60} with basic lands</button></div>`;
+    html += curveHTML(d);
+    $('#bdDeck').innerHTML = html;
+    const fill = $('#bdFill'); if (fill) fill.onclick = () => { const n = D.fillLands(d); if (n) { H().flash(`Added ${n} basic lands.`); changed(); } };
+  }
+
+  function curveHTML(d) {
+    const curve = new Array(8).fill(0);
+    let spells = 0, mv = 0, lands = 0;
+    for (const [n, k] of d.main.concat(d.mode === 'commander' ? d.commander.map(c => [1, c]) : [])) {
+      const i = D.info(k); if (!i) continue;
+      if (i.isLand) { lands += n; continue; }
+      curve[Math.min(7, i.cmc)] += n; spells += n; mv += i.cmc * n;
+    }
+    const max = Math.max(1, ...curve);
+    return `<div class="bd-group stats"><h4>Mana curve</h4>
+      <div class="curve" role="img" aria-label="Mana curve: ${curve.map((c, i) => `${c} at ${i === 7 ? '7 or more' : i}`).join(', ')}">${curve.map((c, i) => `<div class="cv"><span class="cv-n">${c || ''}</span><i style="height:${Math.round(c / max * 100)}%"></i><span class="cv-l">${i === 7 ? '7+' : i}</span></div>`).join('')}</div>
+      <p class="muted small">${spells} spells · ${lands} lands · average mana value ${spells ? (mv / spells).toFixed(2) : '–'}</p></div>`;
+  }
+
+  // ---------------------------------------------------------------- search
+  function search() {
+    const f = B.f, d = B.deck;
+    const q = D.norm(f.q);
+    const id = d.mode === 'commander' && d.commander.length && f.inId ? D.identity(d) : null;
+    const out = [];
+    for (const i of D.index.list) {
+      if (f.type) {
+        if (f.type === 'commander') { if (!i.canCommand && !(i.background && d.commander.length === 1)) continue; }
+        else if (!i.typeN.includes(f.type.toLowerCase())) continue;
+      }
+      if (f.mv) { if (i.isLand) continue; if (f.mv === '7+' ? i.cmc < 7 : i.cmc !== +f.mv) continue; }
+      if (f.colors.size) {
+        if (i.colors.size === 0) { if (!f.colors.has('C')) continue; }
+        else { let ok = true; for (const c of i.colors) if (!f.colors.has(c)) { ok = false; break; } if (!ok) continue; }
+      }
+      if (id) { let ok = true; for (const c of i.ci) if (!id.has(c)) { ok = false; break; } if (!ok) continue; }
+      if (d.mode !== 'commander' && f.std && !i.std) continue;
+      if (d.mode === 'commander' && i.cmdBanned) continue;
+      let score = 0;
+      if (q) {
+        if (i.nameN === q) score = 0;
+        else if (i.nameN.startsWith(q)) score = 1;
+        else if (i.nameN.includes(q)) score = 2;
+        else if (i.typeN.includes(q)) score = 3;
+        else if (i.textN.includes(q)) score = 4;
+        else continue;
+      }
+      out.push([score, i]);
+    }
+    out.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
+    return out.map(x => x[1]);
+  }
+
+  function renderResults() {
+    const { esc, costHTML } = H();
+    const el = $('#bdResults');
+    if (!el) return;
+    const f = B.f;
+    const anyFilter = f.q.trim() || f.colors.size || f.type || f.mv;
+    if (!anyFilter) { el.innerHTML = `<p class="hint">Type a card name, or pick a color, type or mana value to browse.${B.deck.mode === 'constructed' && f.std ? ' Only cards legal in current Standard are shown; untick the box to see everything.' : ''}</p>`; return; }
+    const res = search();
+    B.results = res;
+    const shown = res.slice(0, B.limit);
+    const d = B.deck;
+    el.innerHTML = `<div class="muted small res-count">${res.length.toLocaleString()} card${res.length === 1 ? '' : 's'}</div>` + shown.map(i => {
+      const q = D.qty(d, i.key) + (d.commander.includes(i.key) ? 1 : 0);
+      return `<div class="bd-res"><button class="bd-rmain" data-info="${esc(i.key)}"><span class="r-name">${esc(i.name)}</span><span class="r-type">${esc(i.type)}</span></button><span class="r-cost">${i.isLand ? '' : costHTML(M.parseMana(i.cost))}</span>${q ? `<span class="r-qty" aria-label="${q} in deck">${q}</span>` : '<span class="r-qty empty"></span>'}<button class="r-add" data-inc="${esc(i.key)}" aria-label="Add ${esc(i.name)}">+</button></div>`;
+    }).join('') + (res.length > shown.length ? `<button class="btn ghost more" id="bdMoreRes">Show more (${(res.length - shown.length).toLocaleString()} left)</button>` : '') + (!res.length ? '<p class="hint">No cards match. Try fewer filters.</p>' : '');
+    const m = $('#bdMoreRes'); if (m) m.onclick = () => { B.limit += 60; renderResults(); };
+  }
+
+  // ---------------------------------------------------------------- actions
+  function addCard(key, n) {
+    const d = B.deck, i = D.info(key);
+    if (!i) return;
+    if (d.mode === 'commander' && d.commander.includes(key)) { H().flash(`${i.name} is your commander.`); return; }
+    const cur = D.qty(d, key);
+    const lim = i.limit != null ? i.limit : (d.mode === 'commander' ? 1 : 4);
+    if (cur + n > lim) {
+      if (cur >= lim) { H().flash(d.mode === 'commander' ? `Commander decks allow one copy of ${i.name}.` : `You already have ${lim} copies of ${i.name}.`); return; }
+      n = lim - cur;
+    }
+    D.setQty(d, key, cur + n);
+    changed();
+  }
+  function makeCommander(key, asPartner) {
+    const d = B.deck;
+    const i = D.info(key);
+    if (asPartner) d.commander.push(key); else d.commander = [key];
+    D.setQty(d, key, 0);
+    if (B.f.type === 'commander') { B.f.type = ''; const t = $('#bdType'); if (t) t.value = ''; }
+    renderToggles();
+    if (!asPartner && /^New Commander deck$/.test(d.name)) { d.name = i.name.split(',')[0] + ' deck'; const n = $('#bdName'); if (n) n.value = d.name; }
+    H().flash(`${i.name} is now your commander.`);
+    changed();
+  }
+
+  function cardSheet(key) {
+    const { esc, pip, cardDetailHTML, openSheet, closeSheet } = H();
+    const i = D.info(key); if (!i) return;
+    const d = B.deck;
+    const q = D.qty(d, key);
+    const isCmd = d.commander.includes(key);
+    const lim = i.limit != null ? i.limit : (d.mode === 'commander' ? 1 : 4);
+    const btns = [];
+    if (!isCmd) {
+      btns.push(`<button class="btn primary" data-sa="add1">Add 1</button>`);
+      if (d.mode !== 'commander' && lim > 1 && q < lim) btns.push(`<button class="btn" data-sa="addMax">Add ${lim === Infinity ? 4 : lim - q > 0 ? lim - q : lim}${lim === Infinity ? '' : ' (playset)'}</button>`);
+      if (q) btns.push(`<button class="btn" data-sa="rem1">Remove 1</button>`);
+      if (q > 1) btns.push(`<button class="btn ghost" data-sa="remAll">Remove all</button>`);
+    }
+    if (d.mode === 'commander') {
+      if (isCmd) btns.push(`<button class="btn" data-sa="uncmd">Stop using as commander</button>`);
+      else {
+        if (i.canCommand) btns.push(`<button class="btn" data-sa="cmd">Make commander</button>`);
+        if (D.canAddSecondCommander(d, key)) btns.push(`<button class="btn" data-sa="partner">Add as partner</button>`);
+      }
+    }
+    const legal = [`Standard: ${i.std ? 'legal' : 'not legal'}`, `Commander: ${i.cmdBanned ? 'banned' : 'legal'}`];
+    const html = `${cardDetailHTML(null, i.def)}
+      <div class="bd-legal small"><span>${legal.join(' · ')}</span><span>Color identity ${(i.ci.size ? [...i.ci] : ['C']).map(pip).join('')}</span>${q || isCmd ? `<span><b>${isCmd ? 'Commander' : q + ' in deck'}</b></span>` : ''}</div>
+      <div class="acts row">${btns.join('')}</div>`;
+    openSheet(html, {
+      onClick: e => {
+        const b = e.target.closest('[data-sa]'); if (!b) return;
+        const a = b.dataset.sa;
+        if (a === 'add1') addCard(key, 1);
+        if (a === 'addMax') addCard(key, lim === Infinity ? 4 : Math.max(1, lim - q));
+        if (a === 'rem1') { D.setQty(d, key, q - 1); changed(); }
+        if (a === 'remAll') { D.setQty(d, key, 0); changed(); }
+        if (a === 'cmd') makeCommander(key, false);
+        if (a === 'partner') makeCommander(key, true);
+        if (a === 'uncmd') { d.commander = d.commander.filter(c => c !== key); renderToggles(); changed(); }
+        closeSheet();
+      },
+    });
+  }
+
+  function moreSheet() {
+    const { openSheet, closeSheet, esc } = H();
+    openSheet(`<div class="sheet-head"><h3>${esc(B.deck.name)}</h3></div>
+      <div class="menu-list">
+        <button class="btn" data-m="export">Copy deck list (export)</button>
+        <button class="btn" data-m="import">Import a list into this deck</button>
+        <button class="btn" data-m="dup">Duplicate deck</button>
+        <button class="btn" data-m="clear">Remove all cards</button>
+        <button class="btn danger" data-m="delete">Delete deck</button>
+      </div>`, {
+      onClick: e => {
+        const b = e.target.closest('[data-m]'); if (!b) return;
+        const m = b.dataset.m;
+        if (m === 'export') exportSheet();
+        if (m === 'import') importSheet(B.deck);
+        if (m === 'dup') { const c = D.clone(B.deck); c.id = D.newId(); c.name = B.deck.name + ' (copy)'; c.created = Date.now(); M.Builder.open(c); closeSheet(); H().flash('Duplicated.'); }
+        if (m === 'clear') confirmSheet('Remove every card from this deck?', 'Remove all', () => { B.deck.main = []; B.deck.commander = []; renderToggles(); changed(); });
+        if (m === 'delete') confirmSheet(`Delete “${B.deck.name}”? This can't be undone.`, 'Delete deck', async () => { clearTimeout(saveTimer); await D.store.remove(B.deck.id); const S = H().S; if (S.mine && S.mine.deckId === B.deck.id) S.mine = null; if (S.theirs && S.theirs.deckId === B.deck.id) S.theirs = null; B = null; H().renderSetup(); H().flash('Deck deleted.'); });
+      },
+    });
+  }
+  function confirmSheet(text, label, fn) {
+    const { openSheet, closeSheet, esc } = H();
+    openSheet(`<div class="sheet-head"><h3>${esc(text)}</h3></div><div class="sheet-actions"><button class="btn ghost" id="cfNo">Cancel</button><button class="btn danger" id="cfYes">${esc(label)}</button></div>`);
+    $('#cfNo').onclick = closeSheet;
+    $('#cfYes').onclick = () => { closeSheet(); fn(); };
+  }
+
+  function exportSheet() {
+    const { openSheet, esc, flash } = H();
+    const txt = D.exportText(B.deck);
+    openSheet(`<div class="sheet-head"><h3>Deck list</h3><div class="muted">Works with Arena, Moxfield, Archidekt and most deck sites.</div></div>
+      <textarea id="expText" class="bigtext" readonly rows="14">${esc(txt)}</textarea>
+      <div class="sheet-actions"><button class="btn primary" id="expCopy">Copy</button></div>`);
+    $('#expCopy').onclick = async () => {
+      const ta = $('#expText');
+      try { await navigator.clipboard.writeText(txt); flash('Copied.'); }
+      catch (e) { ta.focus(); ta.select(); flash('Selected. Press copy on your keyboard or menu.'); }
+    };
+  }
+
+  // ---------------------------------------------------------------- import
+  function importSheet(intoDeck) {
+    const { openSheet, closeSheet, esc, flash } = H();
+    openSheet(`<div class="sheet-head"><h3>${intoDeck ? 'Import into this deck' : 'Import a deck'}</h3><div class="muted">Paste a list exported from Arena, MTGO, Moxfield, Archidekt, TappedOut and similar sites, or choose a file.</div></div>
+      <textarea id="impText" class="bigtext" rows="12" placeholder="Commander&#10;1 Krenko, Mob Boss&#10;&#10;Deck&#10;1 Sol Ring&#10;1 Goblin Bombardment&#10;38 Mountain&#10;…"></textarea>
+      <div class="imp-row"><label class="btn sm filebtn">Choose file<input type="file" id="impFile" accept=".txt,.dek,.dck,.csv,.cod,text/plain,text/csv"></label><span class="muted small" id="impFileName">.txt, .dek, .dck or .csv</span></div>
+      ${intoDeck ? '<p class="muted small">This replaces the cards in the current deck.</p>' : ''}
+      <div class="sheet-actions"><button class="btn ghost" id="impCancel">Cancel</button><button class="btn primary" id="impGo">Import</button></div>`, { wide: true });
+    $('#impFile').onchange = e => {
+      const file = e.target.files && e.target.files[0]; if (!file) return;
+      if (file.size > 2e6) { flash('That file is too large to be a deck list.'); return; }
+      const r = new FileReader();
+      r.onload = () => { $('#impText').value = String(r.result || ''); $('#impFileName').textContent = file.name; if (!B || !intoDeck) { const base = file.name.replace(/\.[^.]+$/, ''); $('#impText').dataset.name = base; } };
+      r.readAsText(file);
+    };
+    $('#impCancel').onclick = closeSheet;
+    $('#impGo').onclick = () => {
+      const text = $('#impText').value;
+      if (!text.trim()) { flash('Paste a deck list first.'); return; }
+      const res = D.parseText(text);
+      const n = res.main.reduce((a, x) => a + x[0], 0) + res.commander.length;
+      if (!n) { showImportFailure(res); return; }
+      let deck;
+      if (intoDeck) { deck = B.deck; deck.main = res.main; deck.commander = res.commander; deck.side = res.side; deck.mode = res.mode; if (res.name) deck.name = res.name; }
+      else {
+        deck = D.blank(res.mode);
+        deck.main = res.main; deck.commander = res.commander; deck.side = res.side;
+        deck.name = res.name || $('#impText').dataset.name || (res.commander.length ? D.info(res.commander[0]).name.split(',')[0] + ' deck' : 'Imported deck');
+      }
+      closeSheet();
+      M.Builder.open(deck, { importResult: res }).then(() => queueSave(0));
+    };
+  }
+  function showImportFailure(res) {
+    const { openSheet, esc } = H();
+    openSheet(`<div class="sheet-head"><h3>No cards recognized</h3><div class="muted">Each line should look like “4 Lightning Bolt”. ${res.unknown.length ? 'These names weren\'t found:' : ''}</div></div>${res.unknown.length ? `<ul class="unknown">${res.unknown.slice(0, 30).map(u => `<li>${esc(u.line)}</li>`).join('')}</ul>` : ''}`);
+  }
+  function showImportResult(res) {
+    const { openSheet, esc } = H();
+    const n = res.main.reduce((a, x) => a + x[0], 0) + res.commander.length;
+    const unk = res.unknown.reduce((a, u) => a + u.n, 0);
+    if (!unk && !res.notes.length) { H().flash(`Imported ${n} cards.`); return; }
+    openSheet(`<div class="sheet-head"><h3>Imported ${n} card${n === 1 ? '' : 's'}</h3><div class="muted">As a ${res.mode === 'commander' ? 'Commander' : 'Standard'} deck.</div></div>
+      ${res.notes.length ? `<ul class="notes">${res.notes.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+      ${unk ? `<div><h4 class="h4">Not found (${unk} card${unk === 1 ? '' : 's'})</h4><p class="muted small">These aren't in the game's card pool yet, or are spelled differently. Search for them by hand if they're close matches.</p><ul class="unknown">${res.unknown.map(u => `<li>${u.n} ${esc(u.name)}</li>`).join('')}</ul></div>` : ''}
+      <div class="sheet-actions"><button class="btn primary" id="irOk">Continue to deck</button></div>`);
+    $('#irOk').onclick = H().closeSheet;
+  }
+
+  // ---------------------------------------------------------------- events
+  function bind() {
+    const d = B.deck;
+    $('#bdBack').onclick = async () => {
+      clearTimeout(saveTimer);
+      if (!d.main.length && !d.commander.length) await D.store.remove(d.id);
+      else await D.store.save(d);
+      B = null;
+      const S = H().S;
+      if (d.main.length || d.commander.length) { S.mode = d.mode; S.type = 'mine'; }
+      H().renderSetup();
+    };
+    const nameEl = $('#bdName');
+    nameEl.oninput = () => { d.name = nameEl.value.trim() || 'Untitled deck'; queueSave(); };
+    document.querySelectorAll('[data-fmt]').forEach(b => b.onclick = () => {
+      if (d.mode === b.dataset.fmt) return;
+      d.mode = b.dataset.fmt;
+      if (d.mode === 'constructed' && d.commander.length) { for (const c of d.commander) D.setQty(d, c, D.qty(d, c) + 1); d.commander = []; }
+      B.f.std = d.mode !== 'commander';
+      if (d.mode === 'commander' && !d.commander.length) B.f.type = 'commander';
+      queueSave(); render();
+    });
+    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { B.tab = b.dataset.tab; const root = $('.builder'); root.classList.toggle('tab-search', B.tab === 'search'); root.classList.toggle('tab-deck', B.tab === 'deck'); document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x.dataset.tab === B.tab)); });
+    $('#bdMore').onclick = moreSheet;
+    $('#bdPlay').onclick = async () => {
+      clearTimeout(saveTimer);
+      await D.store.save(d);
+      const p = D.playable(d);
+      if (!p.ok) { H().flash(p.why); return; }
+      const S = H().S;
+      S.mode = d.mode; S.type = 'all'; S.mine = H().customView(D.store.get(d.id) || d); S.pick = 'theirs';
+      B = null;
+      H().renderSetup();
+      H().flash('Deck selected. Pick an opponent or start the game.');
+    };
+    let t = null;
+    const q = $('#bdQ');
+    q.oninput = () => { clearTimeout(t); t = setTimeout(() => { B.f.q = q.value; B.limit = 60; renderResults(); }, 120); };
+    $('#bdType').onchange = e => { B.f.type = e.target.value; B.limit = 60; renderResults(); };
+    $('#bdMV').onchange = e => { B.f.mv = e.target.value; B.limit = 60; renderResults(); };
+    $('#bdColors').onclick = e => { const b = e.target.closest('[data-fc]'); if (!b) return; const c = b.dataset.fc; B.f.colors.has(c) ? B.f.colors.delete(c) : B.f.colors.add(c); b.classList.toggle('on'); b.setAttribute('aria-pressed', B.f.colors.has(c)); B.limit = 60; renderResults(); };
+    $('.bd-body').onclick = e => {
+      const inc = e.target.closest('[data-inc]'); if (inc) { addCard(inc.dataset.inc, 1); return; }
+      const dec = e.target.closest('[data-dec]'); if (dec) { const k = dec.dataset.dec; D.setQty(d, k, D.qty(d, k) - 1); changed(); return; }
+      const un = e.target.closest('[data-uncmd]'); if (un) { d.commander = d.commander.filter(c => c !== un.dataset.uncmd); renderToggles(); changed(); return; }
+      const info = e.target.closest('[data-info]'); if (info) { cardSheet(info.dataset.info); }
+    };
+  }
 })(MTG);
 
 </script>
