@@ -415,6 +415,41 @@ body.dragging .bf-me { outline: 2px dashed color-mix(in srgb, var(--brass) 55%, 
 body.dragging .bf-me::after { content: "Drop here to play"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: var(--f-display); color: var(--brass); font-size: 18px; opacity: .6; pointer-events: none; }
 body.dragging .bf-me.drop-hover { outline-color: var(--brass); outline-style: solid; background: radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--brass) 18%, transparent), transparent 70%), var(--mat); }
 body.dragging .bf-me.drop-hover::after { opacity: 1; }
+
+/* ---------- Horde mode */
+.side { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; }
+.side-hero { color: var(--you); }
+.side-villain { color: var(--foe); }
+.hg-head { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+.hg-head h2 { font-family: var(--f-display); font-weight: 400; font-size: 22px; margin: 0; }
+.hg-rules { margin: 0; max-width: 80ch; line-height: 1.5; }
+.hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; }
+.hcard { display: grid; gap: 6px; align-content: start; text-align: left; padding: 14px; border-radius: 12px; background: var(--mat-2); border: 1px solid var(--line); min-width: 0; }
+.hcard:hover { border-color: var(--brass); }
+.hcard.on { border-color: var(--brass); box-shadow: inset 0 0 0 1px var(--brass); }
+.hc-uni { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.hc-name { font-family: var(--f-display); font-size: 19px; line-height: 1.15; text-wrap: balance; }
+.hc-blurb { font-size: 13.5px; color: var(--muted); line-height: 1.4; }
+.hc-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 2px; }
+.hc-count { font-family: var(--f-num); font-size: 11px; color: var(--muted); margin-left: auto; }
+.hcard.random { background: transparent; border-style: dashed; }
+.life-lbl { font-size: 11px; color: var(--muted); align-self: center; }
+.zc.arrive { color: var(--brass); border-color: var(--brass); }
+.zc.rad { color: var(--good); }
+.lifesel select { max-width: 100%; min-width: 0; }
+.start-row { min-width: 0; }
+@media (max-width: 640px) {
+  .modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mode { padding: 7px 8px; min-width: 0; }
+  .mode b { font-size: 16px; }
+  .mode small { font-size: 11px; line-height: 1.25; }
+  .start-row { display: grid; grid-template-columns: 1fr 1fr; justify-items: stretch; }
+  .start-row > span:empty { display: none; }
+  .start-row .lifesel { display: grid; gap: 4px; min-width: 0; }
+  .start-row .lifesel:first-child:has(#hordeLevelSel) { grid-column: 1 / -1; }
+  .start-row #startBtn { grid-column: 1 / -1; }
+  .hg-head .seg { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+}
 </style>
 </head>
 <body>
@@ -676,6 +711,8 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
     if (c.FLYING) ch.kws.add('Flying'); if (c.DEATHTOUCH) ch.kws.add('Deathtouch'); if (c.LIFELINK) ch.kws.add('Lifelink'); if (c.TRAMPLE) ch.kws.add('Trample'); if (c.VIGILANCE) ch.kws.add('Vigilance'); if (c.HEXPROOF) ch.kws.add('Hexproof'); if (c.INDESTRUCTIBLE) ch.kws.add('Indestructible'); if (c.MENACE) ch.kws.add('Menace'); if (c.REACH) ch.kws.add('Reach'); if (c.HASTE) ch.kws.add('Haste'); if (c['FIRST STRIKE'] || c.FIRSTSTRIKE) ch.kws.add('First Strike');
     for (const k of ch.kws) { const m = /^Protection from (\w+)/.exec(k); if (m) ch.protections.add(m[1].toLowerCase()); if (k === 'Protection:Card.MultiColor') ch.protections.add('multicolored'); }
     ch.power = P; ch.toughness = T;
+    // Horde Magic: the horde's creatures have haste and attack each combat
+    if (o.controller && o.controller.isHorde && ch.types.includes('Creature')) { ch.kws.add('Haste'); ch.mustAttack = true; }
     o._ch = ch; o._chv = g ? g.version : -1;
     return ch;
   }
@@ -1580,7 +1617,13 @@ if (typeof module !== 'undefined') module.exports = MTG;
         hand: [], library: [], graveyard: [], exile: [], command: [], pool: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 },
         landsPlayed: 0, cmdDamage: {}, cmdCasts: {}, lifeGainedThisTurn: 0, lifeLostThisTurn: 0,
         ctl: opts.controllers[i], drewFromEmpty: false, lost: false, deck: opts.decks[i],
+        isHorde: opts.mode === 'horde' && i === 1, rad: 0,
       }));
+      if (opts.mode === 'horde') {
+        this.hordeSleep = opts.hordeHeadStart != null ? opts.hordeHeadStart : 3;
+        this.hordeReveals = opts.hordeReveals || 1;
+        this.players[1].life = 0;
+      }
       for (const pl of this.players) this.loadDeck(pl, opts.decks[pl.id]);
     }
     touch() { this.version++; }
@@ -1598,11 +1641,18 @@ if (typeof module !== 'undefined') module.exports = MTG;
     }
     loadDeck(pl, deck) {
       for (const [n, name] of deck.main) {
+        if (name.startsWith('T:')) { // a horde token card
+          const face = this.db.tokens[name.slice(2)];
+          if (!face) continue;
+          const def = { faces: [face], alt: null, hordeToken: name.slice(2) };
+          for (let i = 0; i < n; i++) { const o = this.newObj(def, pl); o.zone = 'library'; o.hordeToken = name.slice(2); pl.library.push(o); }
+          continue;
+        }
         const def = this.db.cards[name];
         if (!def) continue;
         for (let i = 0; i < n; i++) { const o = this.newObj(def, pl); o.zone = 'library'; pl.library.push(o); }
       }
-      if (this.mode === 'commander') {
+      if (this.mode === 'commander' || (this.mode === 'horde' && !pl.isHorde)) {
         for (const name of deck.commander || []) {
           const def = this.db.cards[name];
           if (!def) continue;
@@ -1657,9 +1707,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
         this.touch();
         return o;
       }
-      if (o.isToken && from !== 'battlefield' && from !== 'stack') { this.removeFromZone(o); o.zone = 'gone'; return o; }
+      if (o.isToken && from !== 'battlefield' && from !== 'stack' && from !== 'limbo') { this.removeFromZone(o); o.zone = 'gone'; return o; }
       // commander replacement
-      if (o.isCommander && ['graveyard', 'exile', 'hand', 'library'].includes(dest) && from !== 'command' && this.mode === 'commander') {
+      if (o.isCommander && ['graveyard', 'exile', 'hand', 'library'].includes(dest) && from !== 'command' && (this.mode === 'commander' || this.mode === 'horde')) {
         if (from === 'battlefield') o._lki = this.snapshot(o);
         this.removeFromZone(o);
         if (from === 'battlefield') this.afterLeave(o, from, 'command');
@@ -1712,6 +1762,68 @@ if (typeof module !== 'undefined') module.exports = MTG;
       for (const x of this.battlefield) { x.blocking = x.blocking.filter(id => id !== o.id); x.blockedBy = x.blockedBy.filter(id => id !== o.id); }
       if (from === 'battlefield') this._leftBF = (this._leftBF || []).concat([{ id: o.id, zcc: o.zcc }]);
     }
+    // ---------------------------------------------------------------- Horde Magic
+    // damage and life loss to the horde mill its library instead
+    hordeMill(n) {
+      const h = this.players.find(p => p.isHorde);
+      const milled = h.library.splice(0, n);
+      for (const o of milled) { o.zone = 'graveyard'; o.zcc++; h.graveyard.push(o); }
+      if (milled.length) this.log(`The horde loses ${milled.length} card${milled.length === 1 ? '' : 's'} from its library (${h.library.length} left).`, 'dmg');
+      this.touch();
+    }
+    // reveal from the top until a nontoken card: tokens enter, the card is cast for free
+    async hordeReveal() {
+      const h = this.active;
+      const tokens = {};
+      const spells = [];
+      let nontoken = 0;
+      while (h.library.length && nontoken < this.hordeReveals) {
+        const o = h.library.shift();
+        if (o.hordeToken) {
+          o.zone = 'gone'; this.objs.delete(o.id);
+          const made = this.createToken(o.hordeToken, h, 1);
+          if (made[0]) tokens[made[0].name] = (tokens[made[0].name] || 0) + 1;
+          continue;
+        }
+        nontoken++;
+        spells.push(o);
+      }
+      const parts = Object.entries(tokens).map(([n, k]) => `${k} ${n.replace(/ Token$/, '')}${k > 1 ? ' tokens' : ' token'}`);
+      if (parts.length || spells.length) this.log(`The horde reveals ${[...parts, ...spells.map(o => o.name)].join(', ')}.`, 'big');
+      else this.log('The horde has nothing left to reveal.', 'big');
+      for (const o of spells) await this.hordeCast(o);
+      this.touch();
+    }
+    async hordeCast(o) {
+      const h = this.active;
+      const f = M.face(o.def.faces[0]);
+      if (f.types.includes('Land')) { o.zone = 'limbo'; this.move(o, 'battlefield', { controller: h }); return; }
+      const item = { isStackItem: true, kind: 'spell', obj: o, controller: h, faceIdx: 0, face: f, x: 0, kicked: 0, from: 'library', id: M.uid() };
+      if (M.isPermanentFace(f)) {
+        if (f.sub.includes('Aura')) { const en = f.keywords.find(k => k.startsWith('Enchant:')); item.node = { api: 'Attach', kind: 'SP', p: { ValidTgts: en ? en.split(':')[1] : 'Creature' }, face: f, targets: [], aura: true }; }
+      } else { const sa = M.spellAbility(f); item.node = sa ? M.buildTree(sa.str, f) : null; }
+      o.zone = 'limbo';
+      if (item.node && !(await M.chooseTargetsForTree(this, item, h))) { this.log(`${f.name} has no legal targets.`); this.move(o, 'graveyard'); return; }
+      o.zone = 'stack';
+      o.castInfo = { from: 'library', by: h.id, turn: this.turn };
+      this.stack.push(item);
+      this.spellsCastThisTurn.push({ player: h, card: o });
+      this.log(`The horde casts ${f.name}${M.describeTargets(item)}.`, 'cast');
+      this.fire({ type: 'cast', card: o, player: h, item });
+    }
+    // Fallout rad counters: at the start of your first main phase, mill that many; each nonland milled costs 1 life and 1 rad counter
+    radiation(pl) {
+      const n = pl.rad;
+      if (pl.isHorde) { this.hordeMill(n); pl.rad = 0; return; }
+      const milled = pl.library.splice(0, n);
+      let nonland = 0;
+      for (const o of milled) { o.zone = 'graveyard'; o.zcc++; pl.graveyard.push(o); if (!o.face.types.includes('Land')) nonland++; }
+      pl.rad -= nonland;
+      if (nonland) this.loseLife(pl, nonland);
+      this.log(`${pl.name} mills ${milled.length} from rad counters and loses ${nonland} life.`, 'dmg');
+      this.touch();
+    }
+
     // cards exiled "until <source> leaves the battlefield" come back
     returnExiledUntilLeaves() {
       const left = this._leftBF; this._leftBF = null;
@@ -1771,6 +1883,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
 
     // ---------------------------------------------------------------- basic actions
     draw(pl, n) {
+      if (pl.isHorde) return; // the horde has no hand
       n = n == null ? 1 : n;
       for (let i = 0; i < n; i++) {
         if (!pl.library.length) { pl.drewFromEmpty = true; continue; }
@@ -1783,13 +1896,14 @@ if (typeof module !== 'undefined') module.exports = MTG;
       this.touch();
     }
     gainLife(pl, n, src) {
-      if (n <= 0) return;
+      if (n <= 0 || pl.isHorde) return;
       pl.life += n; pl.lifeGainedThisTurn += n;
       this.fire({ type: 'lifegain', player: pl, amount: n });
       this.touch();
     }
     loseLife(pl, n) {
       if (n <= 0) return;
+      if (pl.isHorde) { this.hordeMill(n); pl.lifeLostThisTurn += n; this.fire({ type: 'lifeloss', player: pl, amount: n }); return; }
       pl.life -= n; pl.lifeLostThisTurn += n;
       this.fire({ type: 'lifeloss', player: pl, amount: n });
       this.touch();
@@ -2122,6 +2236,13 @@ if (typeof module !== 'undefined') module.exports = MTG;
         changed = false;
         for (const pl of this.players) {
           if (pl.lost) continue;
+          if (pl.isHorde) {
+            if (!pl.library.length && !this.battlefield.some(o => o.controller === pl && M.isCreature(o)) && !this.stack.some(s => s.controller === pl) && !this.pendingTriggers.some(t => t.ctrl === pl)) {
+              pl.lost = true;
+              this.log('The horde is destroyed: its library is empty and it has no creatures left.', 'big');
+            }
+            continue;
+          }
           if (pl.life <= 0 || pl.poison >= 10 || pl.drewFromEmpty || Object.values(pl.cmdDamage).some(v => v >= 21)) {
             pl.lost = true;
             const why = pl.life <= 0 ? 'life total reached 0' : pl.poison >= 10 ? '10 poison counters' : pl.drewFromEmpty ? 'drew from an empty library' : '21 commander damage';
@@ -2174,9 +2295,15 @@ if (typeof module !== 'undefined') module.exports = MTG;
     async start() {
       try {
         // decide first player
-        this.active = this.players[Math.floor(this.rng() * 2)];
-        this.log(`${this.active.name} will go first.`, 'big');
-        for (const pl of this.players) await this.mulligan(pl);
+        if (this.mode === 'horde') {
+          this.active = this.players[0];
+          this.log(`The horde arrives in ${this.hordeSleep} turn${this.hordeSleep === 1 ? '' : 's'}. Prepare your defenses.`, 'big');
+          await this.mulligan(this.players[0]);
+        } else {
+          this.active = this.players[Math.floor(this.rng() * 2)];
+          this.log(`${this.active.name} will go first.`, 'big');
+          for (const pl of this.players) await this.mulligan(pl);
+        }
         let first = true;
         while (!this.over) {
           await this.takeTurn(first);
@@ -2197,12 +2324,12 @@ if (typeof module !== 'undefined') module.exports = MTG;
         shuffle(pl.library, this.rng);
         this.draw(pl, 7);
         if (count >= 4) break;
-        const keep = await this.ask(pl, { type: 'mulligan', hand: pl.hand.slice(), count, freeMulligan: this.mode === 'commander' && count === 0 });
+        const keep = await this.ask(pl, { type: 'mulligan', hand: pl.hand.slice(), count, freeMulligan: (this.mode === 'commander' || (this.mode === 'horde' && pl.command.length > 0)) && count === 0 });
         if (keep) break;
         count++;
         this.log(`${pl.name} mulligans.`);
       }
-      const free = this.mode === 'commander' ? 1 : 0;
+      const free = (this.mode === 'commander' || (this.mode === 'horde' && pl.command.length > 0)) ? 1 : 0;
       const toBottom = Math.max(0, count - free);
       if (toBottom > 0) {
         const chosen = await this.ask(pl, { type: 'chooseCards', prompt: `Put ${toBottom} card(s) on the bottom of your library`, cards: pl.hand.slice(), min: toBottom, max: toBottom, purpose: 'bottom' });
@@ -2214,6 +2341,12 @@ if (typeof module !== 'undefined') module.exports = MTG;
     async takeTurn(first) {
       this.turn++;
       const ap = this.active;
+      if (ap.isHorde && this.hordeSleep > 0) {
+        this.hordeSleep--;
+        this.log(this.hordeSleep ? `The horde gathers… it arrives in ${this.hordeSleep} turn${this.hordeSleep === 1 ? '' : 's'}.` : 'The horde gathers… it arrives next turn!', 'turn');
+        this.touch();
+        return;
+      }
       this.log(`— Turn ${this.turn}: ${ap.name} —`, 'turn');
       for (const pl of this.players) { pl.landsPlayed = 0; pl.lifeGainedThisTurn = 0; pl.lifeLostThisTurn = 0; pl.drawnThisTurn = 0; pl.attackedThisTurn = false; if (this.battlefield.filter(o => o.controller === pl).length >= 10) pl.blessing = true; }
       this.turnLog = [];
@@ -2269,8 +2402,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (step === 'main1') {
         // saga lore
         for (const o of this.battlefield.slice()) if (o.controller === this.active && M.hasType(o, 'Saga')) this.addLore(o);
+        if (this.active.rad > 0) this.radiation(this.active);
       }
       this.fire({ type: 'phase', step, player: this.active });
+      if (step === 'main1' && this.active.isHorde) { await this.processTriggers(); await this.hordeReveal(); }
       await this.priority();
     }
     emptyPools() { for (const pl of this.players) for (const c in pl.pool) pl.pool[c] = 0; }
@@ -4069,6 +4204,30 @@ if (typeof module !== 'undefined') module.exports = MTG;
     g.log(`${me.controller.name}'s clone becomes a copy of ${src.name}.`);
   };
   API.Destroy_ = API.Destroy;
+  API.RingTemptsYou = async (g, node, ctx) => { g.log(`The Ring tempts ${ctx.ctrl.name}.`); };
+  API.Radiation = async (g, node, ctx) => {
+    const num = n(node.p.Num, ctx, node, 1);
+    for (const pl of players(affected(node, ctx, 'you'))) { if (num > 0) { pl.rad = (pl.rad || 0) + num; g.log(`${pl.name} gets ${num} rad counter${num === 1 ? '' : 's'}.`); } }
+  };
+  // Each chosen opponent faces a villainous choice between two effects
+  API.VillainousChoice = async (g, node, ctx) => {
+    const p = node.p;
+    let who = players(resolveDefined((p.Defined || 'Opponent').split('.')[0] === 'Opponent' ? 'Opponent' : p.Defined, ctx, node));
+    if (/LostLifeThisTurn/.test(p.Defined || '')) who = who.filter(pl => pl.lifeLostThisTurn >= 3);
+    const opts = (p.Choices || '').split(',').map(c => c.trim()).map(c => node.face.svars[c] ? M.buildTree(node.face.svars[c], node.face, node) : null).filter(Boolean);
+    if (!opts.length) return;
+    for (const pl of who) {
+      let pick;
+      if (pl.ctl && pl.ctl.isAI) pick = opts[Math.floor(g.rng() * opts.length)];
+      else {
+        const item = { isStackItem: true, kind: 'ability', obj: ctx.src, controller: ctx.ctrl, node, face: node.face };
+        const r = await g.ask(pl, { type: 'modes', node, item, options: opts, min: 1, max: 1, villainous: true });
+        pick = (r && r[0]) || opts[0];
+      }
+      g.log(`${pl.name} faces a villainous choice.`);
+      await M.execNode(g, pick, Object.assign({}, ctx, { remembered: [pl] }));
+    }
+  };
   API.ManaReflected = API.Mana;
   API.Branch = async (g, node, ctx) => {
     const p = node.p;
@@ -4173,6 +4332,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
   'use strict';
   const AI = {};
   M.AI = AI;
+  // the horde's "life" is its library
+  function lifeOf(pl) { return pl.isHorde ? pl.library.length + 5 : pl.life; }
 
   // ---------------------------------------------------------------- evaluation
   function value(o) {
@@ -4315,7 +4476,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (c.isPlayer) {
           if (c === opp) {
             let s = 3;
-            if (node.api === 'DealDamage') s = dmg >= opp.life ? 1000 : (opp.life <= 8 ? 6 + dmg : 1 + dmg * 0.4);
+            if (node.api === 'DealDamage') s = dmg >= lifeOf(opp) ? 1000 : (lifeOf(opp) <= 8 ? 6 + dmg : 1 + dmg * 0.4);
             if (node.api === 'Discard') s = opp.hand.length ? 5 : 0;
             if (node.api === 'Mill') s = 2;
             if (node.api === 'LoseLife') s = 5;
@@ -4410,7 +4571,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         for (const t of n.targets) {
           const th = M.refThing(t);
           if (!th) continue;
-          if (th.isPlayer) { if (pol === 'bad' && th !== pl) s += n.api === 'DealDamage' ? (M.evalNum(n.p.NumDmg || '0', ctx, n.face) >= th.life ? 100 : 2) : 3; else if (pol !== 'bad' && th === pl) s += 2; }
+          if (th.isPlayer) { if (pol === 'bad' && th !== pl) s += n.api === 'DealDamage' ? (M.evalNum(n.p.NumDmg || '0', ctx, n.face) >= lifeOf(th) ? 100 : 2) : 3; else if (pol !== 'bad' && th === pl) s += 2; }
           else if (th.isStackItem) s += 6;
           else if (pol === 'bad' && th.controller !== pl) s += value(th) + 2;
           else if (pol === 'bad' && th.controller === pl) s -= value(th) + 2;
@@ -4683,7 +4844,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const nBlock = blockers.length;
     const groundUnblocked = ground.slice(nBlock).reduce((s, a) => s + Math.max(0, M.power(a)), 0);
     const total = evasiveDmg + groundUnblocked;
-    if (total >= opp.life && cands.length) return cands.map(a => ({ attacker: a, defender: opp }));
+    if (total >= lifeOf(opp) && cands.length) return cands.map(a => ({ attacker: a, defender: opp }));
     const myLife = pl.life;
     let keepBack = oppPower >= myLife - 2;
     for (const a of cands) {
@@ -4700,7 +4861,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
           if (r.aDies && r.bDies && value(b) < value(a) * 0.9) worst = worst === 'bad' ? 'bad' : 'trade-down';
         }
         if (worst === 'safe') attack = true;
-        else if (worst === 'trade-down') attack = opp.life <= 6;
+        else if (worst === 'trade-down') attack = lifeOf(opp) <= 6;
         else attack = false;
       }
       if (attack && keepBack && !M.hasKW(a, 'Vigilance')) {
@@ -4713,7 +4874,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     }
     // planeswalker pressure: redirect one safe attacker to an opposing planeswalker
     const pws = req.defenders.filter(d => !d.isPlayer && M.hasType(d, 'Planeswalker'));
-    if (pws.length && out.length && opp.life > total + 4) {
+    if (pws.length && out.length && lifeOf(opp) > total + 4) {
       const pw = pws[0];
       const safeOne = out.find(x => canBeBlockedBy(x.attacker).length === 0);
       if (safeOne) safeOne.defender = pw;
@@ -4867,6 +5028,21 @@ if (typeof module !== 'undefined') module.exports = MTG;
         case 'blockers': return chooseBlockers(g, pl, req);
         case 'scry': return scry(g, pl, req);
         default: return null;
+      }
+    },
+  };
+  // The horde: never casts from hand or activates abilities, attacks with everything, never blocks
+  AI.hordeController = {
+    isAI: true, isHorde: true,
+    async ask(g, pl, req) {
+      pl.isAI = true;
+      switch (req.type) {
+        case 'priority': return { kind: 'pass' };
+        case 'mulligan': return true;
+        case 'attackers': { const surv = g.opponent(pl); return req.candidates.map(a => ({ attacker: a, defender: surv })); }
+        case 'blockers': return [];
+        case 'yesno': return req.purpose === 'unless' ? false : true;
+        default: return AI.controller.ask(g, pl, req);
       }
     },
   };
@@ -5592,7 +5768,12 @@ if (typeof module !== 'undefined') module.exports = MTG;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   let DATA = null;
-  const S = { mode: 'constructed', mine: null, theirs: null, q: '', type: 'all', colors: new Set(), recent: false, pick: 'mine', life: 40, speed: 1 };
+  const HORDE_LEVELS = {
+    skirmish: { label: 'Skirmish', size: 50, head: 4, desc: '50-card horde · 4-turn head start' },
+    siege: { label: 'Siege', size: 75, head: 3, desc: '75-card horde · 3-turn head start' },
+    full: { label: 'The Full Horde', size: 100, head: 3, desc: 'every card in the horde · 3-turn head start' },
+  };
+  const S = { hordeLevel: 'siege', hordeLife: 20, horde: null, hordeSide: 'all', mode: 'constructed', mine: null, theirs: null, q: '', type: 'all', colors: new Set(), recent: false, pick: 'mine', life: 40, speed: 1 };
   let G = null, HUMAN = null, AIP = null;
   let UI = { pending: null, sel: [], blocks: [], attacks: new Map(), log: [], showLog: false, sheet: null, blockerSel: null, stopAll: false };
 
@@ -5609,7 +5790,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       return;
     }
     const saved = store('setup');
-    if (saved) Object.assign(S, { mode: saved.mode || S.mode, life: saved.life || 40, speed: saved.speed || 1 });
+    if (saved) Object.assign(S, { mode: saved.mode || S.mode, life: saved.life || 40, speed: saved.speed || 1, hordeLevel: HORDE_LEVELS[saved.hordeLevel] ? saved.hordeLevel : 'siege', hordeLife: saved.hordeLife || 20 });
     for (const d of DATA.decks) d._colors = deckColors(d);
     renderSetup();
     M.Decks.store.onChange(() => {
@@ -5693,9 +5874,12 @@ if (typeof module !== 'undefined') module.exports = MTG;
   const TYPE_GROUPS = {
     constructed: [['all', 'All 60-card decks'], ['mine', 'My decks'], ['recent', 'Recent (2023+)'], ['starter', 'Starter & Welcome'], ['pw', 'Planeswalker decks'], ['challenger', 'Challenger decks'], ['intro', 'Intro packs'], ['theme', 'Theme decks'], ['duel', 'Duel decks'], ['event', 'Event & other']],
     commander: [['all', 'All Commander decks'], ['mine', 'My decks'], ['recent', 'Recent (2023+)']],
+    horde: [['all', 'All decks'], ['mine', 'My decks'], ['sixty', '60-card decks'], ['cmdr', 'Commander decks'], ['recent', 'Recent (2023+)']],
   };
   function typeMatch(d, t) {
     if (t === 'mine') return !!d.custom;
+    if (t === 'sixty') return d.mode === 'constructed';
+    if (t === 'cmdr') return d.mode === 'commander';
     if (t === 'all') return true;
     if (d.custom) return false;
     if (t === 'recent') return d.date >= '2023';
@@ -5712,7 +5896,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
   function filteredDecks() {
     const q = S.q.trim().toLowerCase();
     return customDecks().concat(DATA.decks).filter(d => {
-      if (d.mode !== S.mode) return false;
+      if (S.mode !== 'horde' && d.mode !== S.mode) return false;
       if (!typeMatch(d, S.type)) return false;
       if (S.colors.size) { for (const c of S.colors) if (!d._colors.includes(c)) return false; }
       if (q) {
@@ -5730,18 +5914,21 @@ if (typeof module !== 'undefined') module.exports = MTG;
     G = null;
     document.body.classList.remove('in-game');
     const list = filteredDecks();
-    const total = DATA.decks.filter(d => d.mode === S.mode).length + customDecks().filter(d => d.mode === S.mode).length;
-    const mine = S.mine && S.mine.mode === S.mode ? S.mine : null;
-    const theirs = S.theirs && S.theirs.mode === S.mode ? S.theirs : null;
+    const horde = S.mode === 'horde';
+    const inMode = d => horde || d.mode === S.mode;
+    const total = DATA.decks.filter(inMode).length + customDecks().filter(inMode).length;
+    const mine = S.mine && inMode(S.mine) ? S.mine : null;
+    const theirs = horde ? null : (S.theirs && S.theirs.mode === S.mode ? S.theirs : null);
     const shown = list.slice(0, 250);
     S._playable = null;
     $('#app').innerHTML = `
     <div class="setup">
       <header class="setup-head">
-        <div class="brand"><span class="brand-mark">◈</span><div><h1>Planeswalker's Table</h1><p>Play any preconstructed deck against the computer.</p></div></div>
+        <div class="brand"><span class="brand-mark">◈</span><div><h1>Planeswalker's Table</h1><p>Play any preconstructed deck against the computer, or hold off a themed horde.</p></div></div>
         <div class="modes" role="tablist">
           <button class="mode ${S.mode === 'constructed' ? 'on' : ''}" data-mode="constructed" role="tab"><b>Standard</b><small>60 cards · 20 life</small></button>
           <button class="mode ${S.mode === 'commander' ? 'on' : ''}" data-mode="commander" role="tab"><b>Commander</b><small>100 cards · ${S.life} life · 1v1</small></button>
+          <button class="mode ${horde ? 'on' : ''}" data-mode="horde" role="tab"><b>Horde</b><small>Survive an endless army</small></button>
         </div>
       </header>
       <section class="matchup">
@@ -5751,24 +5938,26 @@ if (typeof module !== 'undefined') module.exports = MTG;
         </div>
         <div class="vs">vs</div>
         <div class="slot ${S.pick === 'theirs' ? 'active' : ''}" data-slot="theirs">
-          <div class="slot-lbl">Computer's deck</div>
-          ${theirs ? deckSummary(theirs) : '<div class="slot-empty">Random if left empty</div>'}
+          <div class="slot-lbl">${horde ? 'The horde' : "Computer's deck"}</div>
+          ${horde ? (S.horde ? hordeSummary(S.horde) : '<div class="slot-empty">A random horde if left empty</div>') : (theirs ? deckSummary(theirs) : '<div class="slot-empty">Random if left empty</div>')}
         </div>
         <div class="start-row">
-          ${S.mode === 'commander' ? `<label class="lifesel">Starting life <select id="lifeSel">${[20, 30, 40].map(v => `<option ${v === S.life ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : '<span></span>'}
+          ${horde ? `<label class="lifesel">Difficulty <select id="hordeLevelSel">${Object.entries(HORDE_LEVELS).map(([k, v]) => `<option value="${k}" ${S.hordeLevel === k ? 'selected' : ''}>${v.label}: ${v.desc}</option>`).join('')}</select></label>
+            <label class="lifesel">Your life <select id="hordeLifeSel">${[20, 30, 40].map(v => `<option ${v === S.hordeLife ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
+          ${S.mode === 'commander' ? `<label class="lifesel">Starting life <select id="lifeSel">${[20, 30, 40].map(v => `<option ${v === S.life ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : (horde ? '' : '<span></span>')}
           <label class="lifesel">AI speed <select id="speedSel"><option value="1" ${S.speed == 1 ? 'selected' : ''}>Normal</option><option value="0.4" ${S.speed == 0.4 ? 'selected' : ''}>Fast</option><option value="2" ${S.speed == 2 ? 'selected' : ''}>Slow</option></select></label>
           <button class="btn primary big" id="startBtn" ${mine ? '' : 'disabled'}>Start game</button>
         </div>
       </section>
       <section class="browser">
-        <div class="deckacts"><button class="btn" id="newDeckBtn">＋ New ${S.mode === 'commander' ? 'Commander' : 'Standard'} deck</button><button class="btn" id="importBtn">Import a deck list</button>${customDecks().length ? `<button class="btn ghost" id="myDecksBtn">My decks (${customDecks().length})</button>` : ''}<span class="muted small store-note">${M.Decks.store.mode === 'cloud' ? 'Your decks are saved to your account.' : 'Your decks are saved in this browser.'}</span></div>
+        ${horde && S.pick === 'theirs' ? hordeGallery() : `<div class="deckacts"><button class="btn" id="newDeckBtn">＋ New ${S.mode === 'commander' ? 'Commander' : 'Standard'} deck</button><button class="btn" id="importBtn">Import a deck list</button>${customDecks().length ? `<button class="btn ghost" id="myDecksBtn">My decks (${customDecks().length})</button>` : ''}<span class="muted small store-note">${M.Decks.store.mode === 'cloud' ? 'Your decks are saved to your account.' : 'Your decks are saved in this browser.'}</span></div>
         <div class="filters">
           <input id="deckSearch" type="search" placeholder="Search decks, sets, commanders or a card name" value="${esc(S.q)}" autocomplete="off">
           <select id="typeSel">${TYPE_GROUPS[S.mode].map(([v, l]) => `<option value="${v}" ${S.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
           <div class="colorchips">${M.COLORS.map(c => `<button class="cchip ${S.colors.has(c) ? 'on' : ''}" data-color="${c}" aria-label="${M.COLOR_NAME[c]}">${pip(c)}</button>`).join('')}</div>
         </div>
-        <div class="count">${list.length} of ${total} decks${list.length > shown.length ? ` · showing first ${shown.length}, refine the search to see more` : ''} · choosing <b>${S.pick === 'mine' ? 'your deck' : "the computer's deck"}</b></div>
-        <div class="decklist">${shown.map(d => deckRow(d, mine, theirs)).join('') || '<div class="none">No decks match. Try a shorter search.</div>'}</div>
+        <div class="count">${list.length} of ${total} decks${list.length > shown.length ? ` · showing first ${shown.length}, refine the search to see more` : ''} · choosing <b>${S.pick === 'mine' || horde ? 'your deck' : "the computer's deck"}</b>${horde ? ' · any 60-card or Commander deck can face the horde' : ''}</div>
+        <div class="decklist">${shown.map(d => deckRow(d, mine, theirs)).join('') || '<div class="none">No decks match. Try a shorter search.</div>'}</div>`}
       </section>
       <footer class="legal">
         ${M.Art && M.Art.enabled ? `<label class="stopall"><input type="checkbox" id="artToggle" ${M.Art.isOn() ? 'checked' : ''}> Show card art from Scryfall</label>` : ''}
@@ -5776,6 +5965,42 @@ if (typeof module !== 'undefined') module.exports = MTG;
       </footer>
     </div>`;
     bindSetup();
+  }
+  function hordePips(h) { return `<span class="dpips">${(h.colors.length ? h.colors : ['C']).map(pip).join('')}</span>`; }
+  function hordeSummary(h) {
+    return `<div class="ds"><div class="ds-name">${esc(h.name)}</div><div class="ds-meta">${hordePips(h)} ${esc(h.universe)} · <span class="side side-${h.side === 'Heroes' ? 'hero' : 'villain'}">${esc(h.side)}</span></div><div class="ds-cmd">${esc(h.blurb)}</div><div class="ds-links"><button class="link" data-hview="${esc(h.id)}">View horde</button></div></div>`;
+  }
+  function hordeGallery() {
+    const side = S.hordeSide;
+    const list = DATA.hordes.filter(h => side === 'all' || h.side === side);
+    return `<div class="hg-head"><h2>Choose a horde</h2><div class="seg" role="radiogroup" aria-label="Show">${[['all', 'All'], ['Villains', 'Villains'], ['Heroes', 'Heroes']].map(([v, l]) => `<button class="${side === v ? 'on' : ''}" data-hside="${v}" role="radio" aria-checked="${side === v}">${l}</button>`).join('')}</div></div>
+      <p class="muted small hg-rules">The horde has no life total and no hand. Each turn it reveals cards from the top of its library until it hits a card that isn't a token: every token joins the battlefield and that card is cast for free. Its creatures have haste and attack every turn, and it never blocks. Damage to the horde mills its library. Destroy every creature after its library runs out to win.</p>
+      <div class="hgrid">
+        <button class="hcard random ${!S.horde ? 'on' : ''}" data-horde="random"><span class="hc-uni">Surprise me</span><span class="hc-name">Random horde</span><span class="hc-blurb">Face any of the ${DATA.hordes.length} hordes.</span></button>
+        ${list.map(h => `<button class="hcard ${S.horde && S.horde.id === h.id ? 'on' : ''}" data-horde="${esc(h.id)}">
+          <span class="hc-uni">${esc(h.universe)}</span>
+          <span class="hc-name">${esc(h.name)}</span>
+          <span class="hc-blurb">${esc(h.blurb)}</span>
+          <span class="hc-foot">${hordePips(h)}<span class="side side-${h.side === 'Heroes' ? 'hero' : 'villain'}">${esc(h.side)}</span><span class="hc-count">${h.tokens} tokens · ${h.spells} spells</span></span>
+        </button>`).join('')}
+      </div>`;
+  }
+  function showHordeList(h) {
+    const toks = h.main.filter(([, n]) => n.startsWith('T:')).map(([k, n]) => { const f = DATA.tokens[n.slice(2)] || {}; return [k, f.n || n, `${f.pt || ''} ${(f.t || '').replace(/^.*Creature /, '')}${f.K && f.K.length ? ' · ' + f.K.join(', ') : ''}`]; });
+    const spells = h.main.filter(([, n]) => !n.startsWith('T:'));
+    let html = `<div class="sheet-head"><h3>${esc(h.name)}</h3><div class="muted">${esc(h.universe)} · ${esc(h.side)} · ${h.tokens + h.spells} cards</div></div><p class="muted">${esc(h.blurb)}</p>
+      <div class="dl"><div class="dl-g"><h4>Token cards <span class="muted">${h.tokens}</span></h4>${toks.map(([k, n, d]) => `<div class="dl-row"><span>${k}</span><span>${esc(n)} <span class="muted small">${esc(d)}</span></span><span></span></div>`).join('')}</div>
+      <div class="dl-g"><h4>Spells and creatures <span class="muted">${h.spells}</span></h4>${spells.map(([k, n]) => `<button class="dl-row" data-cardname="${esc(n)}"><span>${k}</span><span>${esc(n)}</span><span class="dl-cost">${DATA.cards[n] ? costHTML(M.face(DATA.cards[n].faces[0]).cost) : ''}</span></button>`).join('')}</div></div>`;
+    openSheet(html, { onClick: e => { const b = e.target.closest('[data-cardname]'); if (b) { const c = DATA.cards[b.dataset.cardname]; if (c) openSheet(cardDetailHTML(null, c), { back: () => showHordeList(h) }); } } });
+  }
+  function hordeSample(h, size) {
+    const all = [];
+    for (const [k, n] of h.main) for (let i = 0; i < k; i++) all.push(n);
+    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+    const pick = all.slice(0, Math.min(size, all.length));
+    const c = {};
+    for (const n of pick) c[n] = (c[n] || 0) + 1;
+    return Object.assign({}, h, { main: Object.entries(c).map(([n, k]) => [k, n]), mode: 'horde', isHordeDeck: true });
   }
   function deckSummary(d) {
     const n = d.main.reduce((a, x) => a + x[0], 0) + d.commander.length;
@@ -5791,22 +6016,27 @@ if (typeof module !== 'undefined') module.exports = MTG;
     </button>`;
   }
   function bindSetup() {
-    document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; S.type = 'all'; S.mine = S.mine && S.mine.mode === S.mode ? S.mine : null; S.pick = 'mine'; renderSetup(); });
+    document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; S.type = 'all'; S.mine = S.mine && (S.mode === 'horde' || S.mine.mode === S.mode) ? S.mine : null; S.pick = 'mine'; saveSetup(); renderSetup(); });
+    document.querySelectorAll('[data-horde]').forEach(b => b.onclick = () => { const id = b.dataset.horde; S.horde = id === 'random' ? null : DATA.hordes.find(h => h.id === id); S.pick = 'mine'; renderSetup(); });
+    document.querySelectorAll('[data-hside]').forEach(b => b.onclick = () => { S.hordeSide = b.dataset.hside; renderSetup(); });
+    const hl = $('#hordeLevelSel'); if (hl) hl.onchange = e => { S.hordeLevel = e.target.value; saveSetup(); };
+    const hlf = $('#hordeLifeSel'); if (hlf) hlf.onchange = e => { S.hordeLife = +e.target.value; saveSetup(); };
     document.querySelectorAll('[data-slot]').forEach(b => b.onclick = e => { if (e.target.closest('[data-view]')) return; S.pick = b.dataset.slot; renderSetup(); });
     const findDeck = id => DATA.decks.find(d => d.id === id) || customDecks().find(d => d.id === id);
     document.querySelectorAll('[data-view]').forEach(b => b.onclick = async e => { e.stopPropagation(); const d = findDeck(b.dataset.view); if (d && d.custom) { try { await ensureAll(); } catch (er) { return; } } showDeckList(d); });
+    document.querySelectorAll('[data-hview]').forEach(b => b.onclick = e => { e.stopPropagation(); const h = DATA.hordes.find(x => x.id === b.dataset.hview); if (h) showHordeList(h); });
     document.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); const d = M.Decks.store.get(b.dataset.edit); if (d) M.Builder.open(d).catch(() => {}); });
-    $('#newDeckBtn').onclick = () => M.Builder.newDeck(S.mode).catch(() => {});
-    $('#importBtn').onclick = () => M.Builder.openImport().catch(() => {});
+    const nd = $('#newDeckBtn'); if (nd) nd.onclick = () => M.Builder.newDeck(S.mode === 'horde' ? 'constructed' : S.mode).catch(() => {});
+    const ib = $('#importBtn'); if (ib) ib.onclick = () => M.Builder.openImport().catch(() => {});
     const mdb = $('#myDecksBtn'); if (mdb) mdb.onclick = () => { S.type = 'mine'; renderSetup(); };
     const si = $('#deckSearch');
     let t = null;
-    si.oninput = () => { clearTimeout(t); t = setTimeout(() => { S.q = si.value; const pos = si.selectionStart; renderSetup(); const n = $('#deckSearch'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 180); };
-    $('#typeSel').onchange = e => { S.type = e.target.value; renderSetup(); };
+    if (si) si.oninput = () => { clearTimeout(t); t = setTimeout(() => { S.q = si.value; const pos = si.selectionStart; renderSetup(); const n = $('#deckSearch'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 180); };
+    const ts = $('#typeSel'); if (ts) ts.onchange = e => { S.type = e.target.value; renderSetup(); };
     document.querySelectorAll('[data-color]').forEach(b => b.onclick = () => { const c = b.dataset.color; S.colors.has(c) ? S.colors.delete(c) : S.colors.add(c); renderSetup(); });
     document.querySelectorAll('[data-deck]').forEach(b => b.onclick = () => {
       const d = findDeck(b.dataset.deck);
-      if (S.pick === 'mine') { S.mine = d; S.pick = 'theirs'; } else { S.theirs = d; }
+      if (S.pick === 'mine') { S.mine = d; S.pick = S.mode === 'horde' && S.horde ? 'mine' : 'theirs'; } else { S.theirs = d; }
       renderSetup();
     });
     const ls = $('#lifeSel'); if (ls) ls.onchange = e => { S.life = +e.target.value; saveSetup(); renderSetup(); };
@@ -5814,7 +6044,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     $('#startBtn').onclick = startGame;
     const at = $('#artToggle'); if (at) at.onchange = e => M.Art.setOn(e.target.checked);
   }
-  function saveSetup() { store('setup', { mode: S.mode, life: S.life, speed: S.speed }); }
+  function saveSetup() { store('setup', { mode: S.mode, life: S.life, speed: S.speed, hordeLevel: S.hordeLevel, hordeLife: S.hordeLife }); }
 
   function showDeckList(d) {
     const rows = [];
@@ -5984,16 +6214,24 @@ if (typeof module !== 'undefined') module.exports = MTG;
       }
       if (!S.mine) { renderSetup(); return; }
     }
+    const horde = S.mode === 'horde';
     const pool = DATA.decks.filter(d => d.mode === S.mode);
     const mine = S.mine;
-    const theirs = S.theirs && S.theirs.mode === S.mode ? S.theirs : pool[Math.floor(Math.random() * pool.length)];
-    S.lastTheirs = theirs;
+    let theirs, hordeDef = null;
+    if (horde) {
+      hordeDef = S.horde || DATA.hordes[Math.floor(Math.random() * DATA.hordes.length)];
+      theirs = hordeSample(hordeDef, HORDE_LEVELS[S.hordeLevel].size);
+    } else theirs = S.theirs && S.theirs.mode === S.mode ? S.theirs : pool[Math.floor(Math.random() * pool.length)];
+    S.lastTheirs = horde ? null : theirs;
+    S.lastHorde = hordeDef;
     UI = { pending: null, sel: [], blocks: [], attacks: new Map(), log: [], showLog: false, sheet: null, blockerSel: null, stopAll: UI.stopAll };
     HUMAN = { isAI: false, ask: humanAsk };
-    AIP = { isAI: true, async ask(g, pl, req) { const r = await M.AI.controller.ask(g, pl, req); const acted = (req.type === 'priority' && r && r.kind !== 'pass') || (req.type === 'attackers' && r && r.length) || (req.type === 'blockers' && r && r.length); if (acted) { scheduleRender(); await sleep(520 * S.speed); } else if (req.type === 'priority') { await sleep(0); } return r; } };
+    const base = horde ? M.AI.hordeController : M.AI.controller;
+    AIP = { isAI: true, async ask(g, pl, req) { const r = await base.ask(g, pl, req); const acted = (req.type === 'priority' && r && r.kind !== 'pass') || (req.type === 'attackers' && r && r.length) || (req.type === 'blockers' && r && r.length); if (acted) { scheduleRender(); await sleep(520 * S.speed); } else if (req.type === 'priority') { await sleep(0); } return r; } };
     G = new M.Game({
-      db: { cards: DATA.cards, tokens: DATA.tokens }, mode: S.mode, decks: [mine, theirs], controllers: [HUMAN, AIP], names: ['You', 'Computer'],
-      startingLife: S.mode === 'commander' ? S.life : 20,
+      db: { cards: DATA.cards, tokens: DATA.tokens }, mode: S.mode, decks: [mine, theirs], controllers: [HUMAN, AIP], names: ['You', horde ? hordeDef.name : 'Computer'],
+      startingLife: horde ? S.hordeLife : (S.mode === 'commander' ? S.life : 20),
+      hordeHeadStart: horde ? HORDE_LEVELS[S.hordeLevel].head : undefined,
       log: (msg, cls) => { msg = youGrammar(msg); UI.log.push({ msg, cls, turn: G ? G.turn : 0 }); if (UI.log.length > 600) UI.log.splice(0, 100); scheduleRender(); },
       onChange: scheduleRender,
     });
@@ -6016,9 +6254,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
   function showGameOver(w) {
     const you = w && w.id === 0;
-    openSheet(`<div class="over ${you ? 'win' : 'loss'}"><div class="over-k">${w ? (you ? 'Victory' : 'Defeat') : 'Draw'}</div><p>${w ? (you ? 'You won' : 'The computer won') : 'Nobody won'} on turn ${G.turn}.</p>
+    openSheet(`<div class="over ${you ? 'win' : 'loss'}"><div class="over-k">${w ? (you ? 'Victory' : 'Defeat') : 'Draw'}</div><p>${G.mode === 'horde' ? (you ? `You held off ${esc(G.players[1].name)}! The horde was destroyed on turn ${G.turn}.` : `${esc(G.players[1].name)} overwhelmed you on turn ${G.turn}, with ${G.players[1].library.length} cards still to come.`) : `${w ? (you ? 'You won' : 'The computer won') : 'Nobody won'} on turn ${G.turn}.`}</p>
       <div class="over-btns"><button class="btn primary" id="rematch">Rematch</button><button class="btn" id="newgame">Choose new decks</button><button class="btn ghost" id="reviewBtn">Review the board</button></div></div>`, { noClose: true });
-    $('#rematch').onclick = () => { closeSheet(); S.theirs = S.theirs || S.lastTheirs; startGame(); };
+    $('#rematch').onclick = () => { closeSheet(); if (G.mode === 'horde') S.horde = S.horde || S.lastHorde; else S.theirs = S.theirs || S.lastTheirs; startGame(); };
     $('#newgame').onclick = () => { closeSheet(); renderSetup(); };
     $('#reviewBtn').onclick = () => { closeSheet(); UI.over = true; renderGame(); };
   }
@@ -6072,7 +6310,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
   function openPromptSheet(req) {
     const t = req.type;
     if (t === 'mulligan') {
-      openSheet(`<div class="sheet-head"><h3>Opening hand</h3><div class="muted">${req.count ? `Mulligan ${req.count}: you'll put ${Math.max(0, req.count - (G.mode === 'commander' ? 1 : 0))} card(s) on the bottom.` : (G.mode === 'commander' ? 'Your first mulligan is free.' : 'Keep these seven, or shuffle and draw a new hand.')}</div></div>
+      openSheet(`<div class="sheet-head"><h3>Opening hand</h3><div class="muted">${req.count ? `Mulligan ${req.count}: you'll put ${Math.max(0, req.count - (G.players[0].command.length ? 1 : 0))} card(s) on the bottom.` : (G.players[0].command.length ? 'Your first mulligan is free.' : 'Keep these seven, or shuffle and draw a new hand.')}</div></div>
         <div class="tiles">${req.hand.map(o => tileHTML(o, { big: true })).join('')}</div>
         <div class="sheet-actions"><button class="btn" id="mullBtn">Mulligan</button><button class="btn primary" id="keepBtn">Keep hand</button></div>`, { noClose: true, onClick: e => { const c = e.target.closest('[data-oid]'); if (c) inspect(G.byId(+c.dataset.oid), true); } });
       $('#keepBtn').onclick = () => answer(true);
@@ -6266,7 +6504,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const landGroups = groupLands(lands, hlSet, selSet, playable);
       return `<div class="row creatures">${creatures.map(t).join('') || '<span class="empty">No creatures</span>'}</div>
         ${others.length ? `<div class="row others">${others.map(t).join('')}</div>` : ''}
-        <div class="row lands">${landGroups}</div>`;
+        ${pl.isHorde && !lands.length ? "" : `<div class="row lands">${landGroups}</div>`}`;
     };
     const blockLines = mode === 'blockers' ? UI.blocks.map(b => `${esc(b.blocker.name)} → ${esc(b.attacker.name)}`).join(' · ') : '';
     const stackHTML = G.stack.length ? `<div class="stack">${G.stack.slice().reverse().map((s, i) => `<button class="stk ${s.controller.id === 0 ? 'me' : 'ai'} ${hlSet.has(s) ? 'hl' : ''} ${selSet.has(s) ? 'sel' : ''}" data-sid="${s.id}"><span class="stk-who">${s.controller.id === 0 ? 'You' : 'AI'}</span><span class="stk-what">${esc(M.describeItem(G, s))}</span>${i === 0 ? '<span class="stk-top">resolves next</span>' : ''}</button>`).join('')}</div>` : '';
@@ -6317,10 +6555,12 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const cmd = pl.command.filter(o => !o.emblem);
     const cmdDmg = Object.entries(pl.cmdDamage).filter(([, v]) => v > 0).map(([id, v]) => `${v}`).join('/');
     return `<div class="pbar ${isMe ? 'me' : 'ai'} ${active ? 'active' : ''}">
-      <button class="pl-life ${hlSet.has(pl) ? 'hl' : ''} ${selSet.has(pl) ? 'sel' : ''}" data-pid="${pl.id}"><span class="pl-name">${esc(pl.name)}</span><span class="life">${pl.life}</span></button>
+      <button class="pl-life ${hlSet.has(pl) ? 'hl' : ''} ${selSet.has(pl) ? 'sel' : ''}" data-pid="${pl.id}"><span class="pl-name">${esc(pl.name)}</span>${pl.isHorde ? `<span class="life" title="Cards left in the horde's library">${pl.library.length}</span><span class="life-lbl">cards left</span>` : `<span class="life">${pl.life}</span>`}</button>
+      ${pl.isHorde && G.hordeSleep > 0 ? `<span class="zc arrive">Arrives in ${G.hordeSleep} turn${G.hordeSleep === 1 ? '' : 's'}</span>` : ''}
+      ${pl.rad ? `<span class="zc rad" title="Rad counters">☢ ${pl.rad}</span>` : ''}
       <div class="pl-zones">
-        ${!isMe ? `<span class="zc" title="Cards in hand">✋ ${pl.hand.length}</span>` : ''}
-        <span class="zc" title="Library">▤ ${pl.library.length}</span>
+        ${!isMe && !pl.isHorde ? `<span class="zc" title="Cards in hand">✋ ${pl.hand.length}</span>` : ''}
+        ${pl.isHorde ? '' : `<span class="zc" title="Library">▤ ${pl.library.length}</span>`}
         <button class="zc zbtn" data-zone="graveyard" data-zp="${pl.id}" title="Graveyard">⚰ ${pl.graveyard.length}</button>
         ${pl.exile.length ? `<button class="zc zbtn" data-zone="exile" data-zp="${pl.id}" title="Exile">⊘ ${pl.exile.length}</button>` : ''}
         ${pl.poison ? `<span class="zc poison" title="Poison">☣ ${pl.poison}</span>` : ''}
@@ -6334,22 +6574,22 @@ if (typeof module !== 'undefined') module.exports = MTG;
   function phaseBar() {
     const steps = [['upkeep', 'Upkp'], ['draw', 'Draw'], ['main1', 'Main'], ['attackers', 'Atk'], ['blockers', 'Blk'], ['damage', 'Dmg'], ['main2', 'Main 2'], ['end', 'End']];
     const cur = G.step === 'firstStrike' ? 'damage' : G.step === 'beginCombat' ? 'attackers' : G.step === 'endCombat' ? 'damage' : G.step === 'cleanup' ? 'end' : G.step === 'untap' ? 'upkeep' : G.step;
-    return `<div class="phases ${G.active && G.active.id === 0 ? 'mine' : 'theirs'}"><span class="turnlbl">T${G.turn} · ${G.active ? (G.active.id === 0 ? 'Your turn' : "Computer's turn") : ''}</span>${steps.map(([k, l]) => `<span class="ph ${k === cur ? 'on' : ''}">${l}</span>`).join('')}</div>`;
+    return `<div class="phases ${G.active && G.active.id === 0 ? 'mine' : 'theirs'}"><span class="turnlbl">T${G.turn} · ${G.active ? (G.active.id === 0 ? 'Your turn' : (G.mode === 'horde' ? "The horde's turn" : "Computer's turn")) : ''}</span>${steps.map(([k, l]) => `<span class="ph ${k === cur ? 'on' : ''}">${l}</span>`).join('')}</div>`;
   }
 
   function promptHTML(mode, req, blockLines) {
     if (G.over) return `<div class="pmsg">Game over.</div><div class="pbtns"><button class="btn primary" id="pNew">New game</button></div>`;
-    if (!req) return `<div class="pmsg wait">${G.active && G.active.id === 1 ? 'Computer is thinking…' : 'Resolving…'}</div>`;
+    if (!req) return `<div class="pmsg wait">${G.active && G.active.id === 1 ? (G.mode === 'horde' ? 'The horde advances…' : 'Computer is thinking…') : 'Resolving…'}</div>`;
     const t = req.type;
     if (mode === 'priority') {
       const top = G.stack[G.stack.length - 1];
       let msg, btn;
-      if (top) { msg = `${top.controller.id === 0 ? 'Your' : "Computer's"} ${top.kind === 'spell' ? top.face.name : 'ability'} is on the stack. Respond, or let it resolve.`; btn = 'Let it resolve'; }
+      if (top) { msg = `${top.controller.id === 0 ? 'Your' : (G.mode === 'horde' ? "The horde's" : "Computer's")} ${top.kind === 'spell' ? top.face.name : 'ability'} is on the stack. Respond, or let it resolve.`; btn = 'Let it resolve'; }
       else if (G.active.id === 0 && G.step === 'main1') { msg = 'Your main phase. Drag a glowing card onto the battlefield, or tap it.'; btn = G.battlefield.some(o => G.canAttack(o)) ? 'Go to combat' : 'End turn'; }
       else if (G.active.id === 0 && G.step === 'main2') { msg = 'Second main phase.'; btn = 'End turn'; }
-      else if (G.active.id === 1 && G.step === 'attackers') { msg = 'The computer is attacking. Cast instants now, or continue to blocks.'; btn = 'Continue'; }
+      else if (G.active.id === 1 && G.step === 'attackers') { msg = `${G.mode === 'horde' ? 'The horde is' : 'The computer is'} attacking. Cast instants now, or continue to blocks.`; btn = 'Continue'; }
       else if (G.step === 'blockers') { msg = 'Blocks are set. Last chance for combat tricks.'; btn = 'To damage'; }
-      else if (G.active.id === 1 && G.step === 'end') { msg = "Computer's end step. Cast instants now, or pass."; btn = 'Pass'; }
+      else if (G.active.id === 1 && G.step === 'end') { msg = `${G.mode === 'horde' ? "The horde's" : "Computer's"} end step. Cast instants now, or pass.`; btn = 'Pass'; }
       else { msg = `${M.STEP_NAMES[G.step]}.`; btn = 'Continue'; }
       return `<div class="pmsg">${esc(msg)}</div><div class="pbtns"><label class="stopall"><input type="checkbox" id="stopAll" ${UI.stopAll ? 'checked' : ''}> Stop at every step</label><button class="btn primary" id="pPass">${btn}</button></div>`;
     }
