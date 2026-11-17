@@ -6,6 +6,13 @@
 <title>Planeswalker's Table</title>
 <meta name="description" content="Play Magic: The Gathering against a computer opponent in Standard or 1v1 Commander with any preconstructed deck.">
 <meta name="theme-color" content="#0f1d1c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Planeswalker">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Marcellus+SC&display=swap">
 <style>:root{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}*,*::before,*::after{box-sizing:border-box}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
@@ -450,11 +457,20 @@ body.dragging .bf-me.drop-hover::after { opacity: 1; }
   .start-row #startBtn { grid-column: 1 / -1; }
   .hg-head .seg { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ---------- resume */
+.resume { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px; background: var(--mat-2); border: 1px solid var(--brass); }
+.rs-title { font-family: var(--f-display); font-size: 18px; }
+.rs-btns { display: flex; gap: 8px; margin-left: auto; }
+body.resuming .sheet-wrap { display: none; }
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true;</script>
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261116225616';
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}</script>
 <script>/* MTG engine — core: parsing, objects, characteristics, mana. */
 var MTG = (typeof MTG !== 'undefined') ? MTG : {};
 (function (M) {
@@ -4749,6 +4765,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
 
   function quickNodeScore(g, pl, node, item) {
+    item = Object.assign({}, item); // scoring must never change the real spell
     // choose plausible targets with the AI's own targeting, then evaluate
     const clone = cloneTree(node);
     item.node = clone;
@@ -5052,6 +5069,95 @@ if (typeof module !== 'undefined') module.exports = MTG;
   AI.chooseBlockers = chooseBlockers;
 })(MTG);
 
+/* Save and resume: a game is its setup + RNG seed + every decision the player made.
+   Replaying those decisions against the deterministic engine rebuilds the exact game. */
+(function (M) {
+  'use strict';
+  const Save = {};
+  M.Save = Save;
+
+  function sameAction(a, b) {
+    return a.kind === b.kind && a.card === b.card && (a.faceIdx || 0) === (b.faceIdx || 0) && (a.from || '') === (b.from || '') &&
+      ((a.ab && a.ab.str) || '') === ((b.ab && b.ab.str) || '') && (a.label || '') === (b.label || '');
+  }
+  const idx = (arr, x) => (arr || []).indexOf(x);
+  const idxs = (arr, xs) => (xs || []).map(x => idx(arr, x));
+  const pick = (arr, is) => (is || []).map(i => arr[i]);
+
+  // turn an answer into plain JSON that refers to choices by position
+  Save.encode = function (g, pl, req, ans) {
+    if (ans == null) return null;
+    switch (req.type) {
+      case 'priority': {
+        if (!ans || ans.kind === 'pass') return -1;
+        const acts = M.legalActions(g, pl);
+        return acts.findIndex(a => sameAction(a, ans));
+      }
+      case 'mulligan': case 'yesno': return !!ans;
+      case 'x': return ans | 0;
+      case 'modes': return idxs(req.options, ans);
+      case 'chooseCards': return idxs(req.cards, ans);
+      case 'targets': return idxs(req.candidates, ans);
+      case 'scry': return idxs(req.cards, ans.bottom || []);
+      case 'attackers': return ans.map(d => [idx(req.candidates, d.attacker), idx(req.defenders, d.defender)]);
+      case 'blockers': return ans.map(d => [idx(req.candidates, d.blocker), idx(req.attackers, d.attacker)]);
+      default: return null;
+    }
+  };
+  // and back again; returns {ok, value}
+  Save.decode = function (g, pl, req, enc) {
+    const bad = { ok: false };
+    try {
+      switch (req.type) {
+        case 'priority': {
+          if (enc === -1) return { ok: true, value: { kind: 'pass' } };
+          const acts = M.legalActions(g, pl);
+          return acts[enc] ? { ok: true, value: acts[enc] } : bad;
+        }
+        case 'mulligan': case 'yesno': return { ok: true, value: !!enc };
+        case 'x': return { ok: true, value: enc };
+        case 'modes': { const v = pick(req.options, enc); return v.every(Boolean) ? { ok: true, value: v } : bad; }
+        case 'chooseCards': { const v = pick(req.cards, enc); return v.every(Boolean) ? { ok: true, value: v } : bad; }
+        case 'targets': { if (enc == null) return { ok: true, value: null }; const v = pick(req.candidates, enc); return v.every(Boolean) ? { ok: true, value: v } : bad; }
+        case 'scry': { const bottom = pick(req.cards, enc); if (!bottom.every(Boolean)) return bad; return { ok: true, value: { top: req.cards.filter(o => !bottom.includes(o)), bottom } }; }
+        case 'attackers': { const v = enc.map(([a, d]) => ({ attacker: req.candidates[a], defender: req.defenders[d] })); return v.every(x => x.attacker && x.defender) ? { ok: true, value: v } : bad; }
+        case 'blockers': { const v = enc.map(([b, a]) => ({ blocker: req.candidates[b], attacker: req.attackers[a] })); return v.every(x => x.blocker && x.attacker) ? { ok: true, value: v } : bad; }
+        default: return { ok: true, value: enc };
+      }
+    } catch (e) { return bad; }
+  };
+
+  // Wrap a controller so every answer is recorded
+  Save.recorder = function (base, onRecord) {
+    return Object.assign({}, base, {
+      async ask(g, pl, req) {
+        const ans = await base.ask(g, pl, req);
+        if (!g.replaying) onRecord({ t: req.type, a: Save.encode(g, pl, req, ans) });
+        return ans;
+      },
+    });
+  };
+  // Answer from a recording first; once it runs out (or stops matching), hand over to the live controller
+  Save.replayer = function (recorded, live, hooks) {
+    let i = 0;
+    const ctl = Object.assign({}, live, {
+      async ask(g, pl, req) {
+        if (i < recorded.length) {
+          const rec = recorded[i];
+          let res = rec.t === req.type ? Save.decode(g, pl, req, rec.a) : { ok: false };
+          if (res.ok) { i++; if (i >= recorded.length) hooks.done(true); return res.value; }
+          const info = { at: i, want: rec.t, got: req.type, enc: rec.a, turn: g.turn, step: g.step };
+          i = recorded.length;
+          hooks.done(false, info);
+        }
+        return live.ask(g, pl, req);
+      },
+    });
+    if (!recorded.length) setTimeout(() => hooks.done(true), 0);
+    return ctl;
+  };
+})(MTG);
+
 /* Card art from Scryfall (self-hosted build only).
    - Precon decks: each card uses its printing from the deck's own set (or the exact printing the
      decklist names). If that set also has a borderless or extended-art version, that is used instead.
@@ -5247,9 +5353,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
 
   // Give every card object in a new game its art rule
-  function setupGame(game, decks) {
+  function setupGame(game, decks, fixedSeed) {
     if (!enabled) return;
-    const seed = Math.random().toString(36).slice(2);
+    const seed = fixedSeed || Math.random().toString(36).slice(2);
     game.players.forEach((pl, idx) => {
       const deck = decks[idx];
       if (!deck) return;
@@ -5792,7 +5898,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const saved = store('setup');
     if (saved) Object.assign(S, { mode: saved.mode || S.mode, life: saved.life || 40, speed: saved.speed || 1, hordeLevel: HORDE_LEVELS[saved.hordeLevel] ? saved.hordeLevel : 'siege', hordeLife: saved.hordeLife || 20 });
     for (const d of DATA.decks) d._colors = deckColors(d);
-    renderSetup();
+    const sv = readSave();
+    const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    if (sv && standalone) resumeSaved(sv); else renderSetup();
     M.Decks.store.onChange(() => {
       if (G || (M.Builder && M.Builder.isOpen()) || !document.querySelector('.setup')) return;
       const a = document.activeElement; if (a && a.id === 'deckSearch') return;
@@ -5921,8 +6029,11 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const theirs = horde ? null : (S.theirs && S.theirs.mode === S.mode ? S.theirs : null);
     const shown = list.slice(0, 250);
     S._playable = null;
+    const sv = readSave();
+    const resumeBanner = sv ? `<section class="resume" role="region" aria-label="Game in progress"><div><div class="slot-lbl">Game in progress</div><div class="rs-title">${esc(sv.setup.decks[0].name)} <span class="muted">vs</span> ${esc(sv.setup.mode === 'horde' ? sv.setup.names[1] : sv.setup.decks[1].name)}</div><div class="muted small">${sv.setup.mode === 'horde' ? 'Horde' : sv.setup.mode === 'commander' ? 'Commander' : 'Standard'} · turn ${sv.turn || 1}${sv.life ? ` · you have ${sv.life[0]} life` : ''} · saved ${timeAgo(sv.savedAt)}</div></div><div class="rs-btns"><button class="btn ghost" id="rsDiscard">Abandon</button><button class="btn primary" id="rsGo">Continue game</button></div></section>` : '';
     $('#app').innerHTML = `
     <div class="setup">
+      ${resumeBanner}
       <header class="setup-head">
         <div class="brand"><span class="brand-mark">◈</span><div><h1>Planeswalker's Table</h1><p>Play any preconstructed deck against the computer, or hold off a themed horde.</p></div></div>
         <div class="modes" role="tablist">
@@ -6041,8 +6152,20 @@ if (typeof module !== 'undefined') module.exports = MTG;
     });
     const ls = $('#lifeSel'); if (ls) ls.onchange = e => { S.life = +e.target.value; saveSetup(); renderSetup(); };
     $('#speedSel').onchange = e => { S.speed = +e.target.value; saveSetup(); };
-    $('#startBtn').onclick = startGame;
+    $('#startBtn').onclick = () => { clearSave(); startGame(); };
+    const rg = $('#rsGo'); if (rg) rg.onclick = () => { const sv = readSave(); if (sv) resumeSaved(sv); };
+    const rd = $('#rsDiscard'); if (rd) rd.onclick = () => { clearSave(); renderSetup(); };
     const at = $('#artToggle'); if (at) at.onchange = e => M.Art.setOn(e.target.checked);
+  }
+  function timeAgo(t) {
+    if (!t) return 'recently';
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+    const d = Math.round(h / 24);
+    return `${d} day${d === 1 ? '' : 's'} ago`;
   }
   function saveSetup() { store('setup', { mode: S.mode, life: S.life, speed: S.speed, hordeLevel: S.hordeLevel, hordeLife: S.hordeLife }); }
 
@@ -6224,21 +6347,82 @@ if (typeof module !== 'undefined') module.exports = MTG;
     } else theirs = S.theirs && S.theirs.mode === S.mode ? S.theirs : pool[Math.floor(Math.random() * pool.length)];
     S.lastTheirs = horde ? null : theirs;
     S.lastHorde = hordeDef;
+    const rnd = () => (Math.random() * 0x7fffffff) | 0 || 1;
+    launchGame({
+      mode: S.mode, decks: [slimDeck(mine), slimDeck(theirs)], names: ['You', horde ? hordeDef.name : 'Computer'],
+      startingLife: horde ? S.hordeLife : (S.mode === 'commander' ? S.life : 20),
+      hordeHeadStart: horde ? HORDE_LEVELS[S.hordeLevel].head : null,
+      hordeId: hordeDef ? hordeDef.id : null, seed: rnd(), artSeed: rnd().toString(36),
+    }, []);
+  }
+  // only what a game needs from a deck (keeps saves small)
+  function slimDeck(d) {
+    const o = { id: d.id, name: d.name, mode: d.mode, main: d.main, commander: d.commander || [] };
+    for (const k of ['set', 'prints', 'custom', 'deckId', 'typeName', 'isHordeDeck', 'universe', 'side']) if (d[k] != null) o[k] = d[k];
+    return o;
+  }
+
+  // ---------------------------------------------------------------- playing, saving and resuming
+  const SAVE_KEY = 'mtg.save.v1';
+  let SAVE = null, saveTimer = null;
+  function persistNow() {
+    clearTimeout(saveTimer); saveTimer = null;
+    if (!SAVE || !G || G.over || G.replaying) return;
+    SAVE.turn = G.turn; SAVE.savedAt = Date.now();
+    SAVE.life = G.players.map(p => p.isHorde ? p.library.length : p.life);
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) { /* storage full or blocked: keep playing */ }
+  }
+  function persistSoon() { if (!saveTimer) saveTimer = setTimeout(persistNow, 400); }
+  function clearSave() { SAVE = null; clearTimeout(saveTimer); saveTimer = null; try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+  function readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return s && s.v === 1 && s.setup ? s : null; } catch (e) { return null; } }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistNow(); });
+  window.addEventListener('pagehide', persistNow);
+
+  function launchGame(setup, answers) {
     UI = { pending: null, sel: [], blocks: [], attacks: new Map(), log: [], showLog: false, sheet: null, blockerSel: null, stopAll: UI.stopAll };
     HUMAN = { isAI: false, ask: humanAsk };
+    const horde = setup.mode === 'horde';
     const base = horde ? M.AI.hordeController : M.AI.controller;
-    AIP = { isAI: true, async ask(g, pl, req) { const r = await base.ask(g, pl, req); const acted = (req.type === 'priority' && r && r.kind !== 'pass') || (req.type === 'attackers' && r && r.length) || (req.type === 'blockers' && r && r.length); if (acted) { scheduleRender(); await sleep(520 * S.speed); } else if (req.type === 'priority') { await sleep(0); } return r; } };
+    AIP = { isAI: true, async ask(g, pl, req) { const r = await base.ask(g, pl, req); if (g.replaying) return r; const acted = (req.type === 'priority' && r && r.kind !== 'pass') || (req.type === 'attackers' && r && r.length) || (req.type === 'blockers' && r && r.length); if (acted) { scheduleRender(); await sleep(520 * S.speed); } else if (req.type === 'priority') { await sleep(0); } return r; } };
+    SAVE = { v: 1, build: (window.MTG_BUILD || ''), setup, answers: answers.slice(), turn: 0 };
+    const recorder = M.Save.recorder(HUMAN, rec => { SAVE.answers.push(rec); persistSoon(); });
+    let ctl0 = recorder;
+    const resuming = answers.length > 0;
+    if (resuming) {
+      ctl0 = M.Save.replayer(answers, recorder, {
+        done: (clean, info) => {
+          if (!G) return;
+          G.replaying = false;
+          if (!clean && info) { SAVE.answers = answers.slice(0, info.at); flash('Your game was resumed, but the last few moves could not be replayed exactly.'); }
+          document.body.classList.remove('resuming');
+          persistSoon();
+          renderGame();
+        },
+      });
+      document.body.classList.add('resuming');
+    }
     G = new M.Game({
-      db: { cards: DATA.cards, tokens: DATA.tokens }, mode: S.mode, decks: [mine, theirs], controllers: [HUMAN, AIP], names: ['You', horde ? hordeDef.name : 'Computer'],
-      startingLife: horde ? S.hordeLife : (S.mode === 'commander' ? S.life : 20),
-      hordeHeadStart: horde ? HORDE_LEVELS[S.hordeLevel].head : undefined,
+      db: { cards: DATA.cards, tokens: DATA.tokens }, mode: setup.mode, decks: setup.decks, controllers: [ctl0, AIP], names: setup.names,
+      startingLife: setup.startingLife, hordeHeadStart: setup.hordeHeadStart == null ? undefined : setup.hordeHeadStart, seed: setup.seed,
       log: (msg, cls) => { msg = youGrammar(msg); UI.log.push({ msg, cls, turn: G ? G.turn : 0 }); if (UI.log.length > 600) UI.log.splice(0, 100); scheduleRender(); },
       onChange: scheduleRender,
     });
+    G.replaying = resuming;
     document.body.classList.add('in-game');
-    if (M.Art && M.Art.enabled) M.Art.setupGame(G, [mine, theirs]);
-    renderGame();
-    G.start().then(w => { renderGame(); showGameOver(w); }).catch(e => { console.error(e); UI.log.push({ msg: 'Game error: ' + e.message, cls: 'err' }); renderGame(); });
+    if (M.Art && M.Art.enabled) M.Art.setupGame(G, setup.decks, setup.artSeed);
+    if (resuming) $('#app').innerHTML = `<div class="loading"><div class="ld-title">Resuming your game…</div><div class="ld-sub">Turn ${SAVE.turn || '?'} · ${esc(setup.decks[0].name)} vs ${esc(setup.names[1] === 'Computer' ? setup.decks[1].name : setup.names[1])}</div><div class="ld-bar"><i></i></div></div>`;
+    else { persistNow(); renderGame(); }
+    const g = G;
+    g.start().then(w => { if (G !== g) return; clearSave(); renderGame(); showGameOver(w); }).catch(e => { console.error(e); UI.log.push({ msg: 'Game error: ' + e.message, cls: 'err' }); renderGame(); });
+  }
+
+  async function resumeSaved(sv) {
+    const decks = sv.setup.decks;
+    const missing = decks.some(d => d.main.some(([, n]) => !n.startsWith('T:') && !DATA.cards[n]) || (d.commander || []).some(n => !DATA.cards[n]));
+    if (missing) { try { await ensureAll(); } catch (e) { return; } }
+    if (sv.setup.mode === 'horde') S.lastHorde = DATA.hordes.find(h => h.id === sv.setup.hordeId) || null;
+    S.mode = sv.setup.mode;
+    launchGame(sv.setup, sv.answers || []);
   }
 
   function youGrammar(m) {
@@ -6257,7 +6441,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     openSheet(`<div class="over ${you ? 'win' : 'loss'}"><div class="over-k">${w ? (you ? 'Victory' : 'Defeat') : 'Draw'}</div><p>${G.mode === 'horde' ? (you ? `You held off ${esc(G.players[1].name)}! The horde was destroyed on turn ${G.turn}.` : `${esc(G.players[1].name)} overwhelmed you on turn ${G.turn}, with ${G.players[1].library.length} cards still to come.`) : `${w ? (you ? 'You won' : 'The computer won') : 'Nobody won'} on turn ${G.turn}.`}</p>
       <div class="over-btns"><button class="btn primary" id="rematch">Rematch</button><button class="btn" id="newgame">Choose new decks</button><button class="btn ghost" id="reviewBtn">Review the board</button></div></div>`, { noClose: true });
     $('#rematch').onclick = () => { closeSheet(); if (G.mode === 'horde') S.horde = S.horde || S.lastHorde; else S.theirs = S.theirs || S.lastTheirs; startGame(); };
-    $('#newgame').onclick = () => { closeSheet(); renderSetup(); };
+    $('#newgame').onclick = () => { closeSheet(); clearSave(); renderSetup(); };
     $('#reviewBtn').onclick = () => { closeSheet(); UI.over = true; renderGame(); };
   }
 
@@ -6397,7 +6581,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
 
   // ---------------------------------------------------------------- rendering
   let rq = false;
-  function scheduleRender() { if (rq) return; rq = true; requestAnimationFrame(() => { rq = false; if (G) renderGame(); }); }
+  function scheduleRender() { if (G && G.replaying) return; if (rq) return; rq = true; requestAnimationFrame(() => { rq = false; if (G) renderGame(); }); }
 
   function tileHTML(o, opts) {
     opts = opts || {};
@@ -6815,8 +6999,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
         <li>The game stops for you when you can respond to the computer. Turn on "stop at every step" for full control.</li>
       </ul>
       ${unsup.length ? `<p class="muted small">Some rare card mechanics in this game aren't implemented yet and were skipped: ${esc(unsup.join(', '))}.</p>` : ''}</div>`);
-    $('#mConcede').onclick = () => { closeSheet(); const p = UI.pending; G.over = true; UI.pending = null; renderSetup(); };
-    $('#mRestart').onclick = () => { closeSheet(); G.over = true; UI.pending = null; S.theirs = G.players[1].deck; startGame(); };
+    $('#mConcede').onclick = () => { closeSheet(); G.over = true; UI.pending = null; clearSave(); renderSetup(); };
+    $('#mRestart').onclick = () => { closeSheet(); G.over = true; UI.pending = null; clearSave(); if (G.mode === 'horde') S.horde = S.horde || S.lastHorde; else S.theirs = G.players[1].deck; startGame(); };
     $('#mStop').onchange = e => { UI.stopAll = e.target.checked; };
     const ma = $('#mArt'); if (ma) ma.onchange = e => { M.Art.setOn(e.target.checked); renderGame(); };
   }
