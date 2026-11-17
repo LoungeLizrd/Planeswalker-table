@@ -463,11 +463,35 @@ body.dragging .bf-me.drop-hover::after { opacity: 1; }
 .rs-title { font-family: var(--f-display); font-size: 18px; }
 .rs-btns { display: flex; gap: 8px; margin-left: auto; }
 body.resuming .sheet-wrap { display: none; }
+
+/* yes/no prompts about a card: the card fills all the room the Yes/No buttons leave */
+.sheet.cardprompt { height: 94%; max-height: 94%; width: min(640px, 100%); }
+.sheet.cardprompt .sheet-body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding-block: 14px 10px; }
+.sheet.cardprompt .sheet-head h3 { font-size: 19px; margin: 0; }
+.sheet.cardprompt .sheet-actions { position: static; flex: none; padding: 0; }
+.sheet.cardprompt .sheet-actions .btn { min-width: 108px; min-height: 46px; font-size: 16px; }
+.cp-card { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; container-type: size; }
+.cp-card .fullcard { max-height: 100%; }
+.cp-card .fullcard img { height: min(calc(100cqh - 24px), calc(100cqw * 680 / 488)); width: auto; max-height: none; max-width: 100%; }
+.cp-card .artslot { width: 100%; max-height: 100%; justify-items: center; }
+.cp-card .bigcard { max-height: 100%; overflow-y: auto; width: min(100%, 460px); }
+.cp-card .bigcard .bc-text { font-size: 16px; }
+@supports not (container-type: size) { .cp-card .fullcard img { height: auto; max-height: calc(94dvh - 190px); } }
+.cp-card .bigcard .bc-name { font-size: 23px; }
+.cp-card .bigcard .bc-text { font-size: 17px; }
+/* short landscape screens: card on the left, question and buttons on the right */
+@media (orientation: landscape) and (max-height: 560px) {
+  .sheet.cardprompt { width: min(760px, 100%); }
+  .sheet.cardprompt .sheet-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 34%); grid-template-rows: 1fr auto; grid-template-areas: "card head" "card acts"; align-items: start; column-gap: 16px; }
+  .sheet.cardprompt .cp-card { grid-area: card; height: 100%; }
+  .sheet.cardprompt .sheet-head { grid-area: head; align-self: center; }
+  .sheet.cardprompt .sheet-actions { grid-area: acts; flex-direction: column-reverse; align-items: stretch; }
+}
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true; window.MTG_BUILD = '20261116225616';
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261117065947';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }</script>
@@ -1636,7 +1660,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
         isHorde: opts.mode === 'horde' && i === 1, rad: 0,
       }));
       if (opts.mode === 'horde') {
-        this.hordeSleep = opts.hordeHeadStart != null ? opts.hordeHeadStart : 3;
+        // a head start of N means the survivor takes N turns in a row, then the horde acts; the horde skips N-1 turns
+        this.hordeHeadStart = opts.hordeHeadStart != null ? opts.hordeHeadStart : 3;
+        this.hordeSleep = Math.max(0, this.hordeHeadStart - 1);
         this.hordeReveals = opts.hordeReveals || 1;
         this.players[1].life = 0;
       }
@@ -2313,7 +2339,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         // decide first player
         if (this.mode === 'horde') {
           this.active = this.players[0];
-          this.log(`The horde arrives in ${this.hordeSleep} turn${this.hordeSleep === 1 ? '' : 's'}. Prepare your defenses.`, 'big');
+          this.log(`You have a ${this.hordeHeadStart}-turn head start before the horde arrives. Prepare your defenses.`, 'big');
           await this.mulligan(this.players[0]);
         } else {
           this.active = this.players[Math.floor(this.rng() * 2)];
@@ -2358,11 +2384,14 @@ if (typeof module !== 'undefined') module.exports = MTG;
       this.turn++;
       const ap = this.active;
       if (ap.isHorde && this.hordeSleep > 0) {
+        // the horde is still gathering: no turn of its own, and the turn counter doesn't advance
+        this.turn--;
         this.hordeSleep--;
-        this.log(this.hordeSleep ? `The horde gathers… it arrives in ${this.hordeSleep} turn${this.hordeSleep === 1 ? '' : 's'}.` : 'The horde gathers… it arrives next turn!', 'turn');
+        this.log(this.hordeSleep ? `The horde gathers… ${this.hordeSleep + 1} more turns before it arrives.` : 'The horde gathers… it arrives after your next turn!', 'turn');
         this.touch();
         return;
       }
+      if (ap.isHorde) this.hordeArrived = true;
       this.log(`— Turn ${this.turn}: ${ap.name} —`, 'turn');
       for (const pl of this.players) { pl.landsPlayed = 0; pl.lifeGainedThisTurn = 0; pl.lifeLostThisTurn = 0; pl.drawnThisTurn = 0; pl.attackedThisTurn = false; if (this.battlefield.filter(o => o.controller === pl).length >= 10) pl.blessing = true; }
       this.turnLog = [];
@@ -6208,7 +6237,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     closeSheet();
     const el = document.createElement('div');
     el.className = 'sheet-wrap';
-    el.innerHTML = `<div class="sheet ${opts.wide ? 'wide' : ''}" role="dialog" aria-modal="true">${opts.noClose ? '' : `<button class="sheet-x" aria-label="Close">✕</button>`}${opts.back ? '<button class="sheet-back">‹ Back</button>' : ''}<div class="sheet-body">${html}</div></div>`;
+    el.innerHTML = `<div class="sheet ${opts.wide ? 'wide' : ''} ${opts.cls || ''}" role="dialog" aria-modal="true">${opts.noClose ? '' : `<button class="sheet-x" aria-label="Close">✕</button>`}${opts.back ? '<button class="sheet-back">‹ Back</button>' : ''}<div class="sheet-body">${html}</div></div>`;
     document.body.appendChild(el);
     UI.sheet = el;
     if (!opts.noClose) { el.querySelector('.sheet-x').onclick = () => { closeSheet(); opts.onClose && opts.onClose(); }; el.onclick = e => { if (e.target === el) { closeSheet(); opts.onClose && opts.onClose(); } }; }
@@ -6281,6 +6310,22 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (UI.pending && UI.pending.req.type === 'mulligan' && UI.sheet) openPromptSheet(UI.pending.req);
     }, 300);
   });
+  function textCardHTML(o, f, live) {
+    const pt = live && M.isCreature(o) ? `${M.power(o)}/${M.toughness(o)}` : (f.power != null ? `${f.power}/${f.toughness}` : '');
+    const loy = live && o.counters.LOYALTY != null ? o.counters.LOYALTY : f.loyalty;
+    return `<div class="bigcard ${colorClass(live ? o : null, f)}">
+        <div class="bc-top"><span class="bc-name">${esc(f.name)}</span><span class="bc-cost">${costHTML(f.cost)}</span></div>
+        <div class="bc-type">${esc(f.raw.t || '')}</div>
+        <div class="bc-text">${oracleHTML(f.oracle) || '<span class="muted">No rules text.</span>'}</div>
+        <div class="bc-foot">${pt ? `<span class="bc-pt">${pt}</span>` : ''}${loy != null && f.types.includes('Planeswalker') ? `<span class="bc-loy">${loy}</span>` : ''}</div>
+      </div>`;
+  }
+  // one card, as big as it can be: the card image when art is on, otherwise the text card
+  function promptCardHTML(o) {
+    const i = o.def.alt === 'Split' ? 0 : (o.faceIdx || 0);
+    const f = o.def.alt === 'Split' ? o.face : M.face(o.def.faces[i]);
+    return fullArtHTML(o, o.def, i, textCardHTML(o, f, o.zone === 'battlefield'));
+  }
   function cardDetailHTML(o, def, faceIdx) {
     const faces = (o ? o.def : def).faces;
     let html = '';
@@ -6290,12 +6335,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const live = o && o.zone === 'battlefield' && i === o.faceIdx;
       const pt = live && M.isCreature(o) ? `${M.power(o)}/${M.toughness(o)}` : (f.power != null ? `${f.power}/${f.toughness}` : '');
       const loy = live && o.counters.LOYALTY != null ? o.counters.LOYALTY : f.loyalty;
-      const textCard = `<div class="bigcard ${colorClass(live ? o : null, f)}">
-        <div class="bc-top"><span class="bc-name">${esc(f.name)}</span><span class="bc-cost">${costHTML(f.cost)}</span></div>
-        <div class="bc-type">${esc(f.raw.t || '')}</div>
-        <div class="bc-text">${oracleHTML(f.oracle) || '<span class="muted">No rules text.</span>'}</div>
-        <div class="bc-foot">${pt ? `<span class="bc-pt">${pt}</span>` : ''}${loy != null && f.types.includes('Planeswalker') ? `<span class="bc-loy">${loy}</span>` : ''}</div>
-      </div>`;
+      const textCard = textCardHTML(o, f, live);
       // with card art available, show only the card image (it already has all the text)
       html += fullArtHTML(o, o ? o.def : def, i, textCard);
     });
@@ -6466,6 +6506,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
       openPromptSheet(req);
     });
   }
+  // test hook: ask the human a question directly
+  M.__ui = { game: () => G, ask: req => humanAsk(G, G.players[0], req) };
   function answer(v) {
     const p = UI.pending;
     if (!p) return;
@@ -6502,7 +6544,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       return;
     }
     if (t === 'yesno') {
-      openSheet(`<div class="sheet-head"><h3>${esc(req.prompt)}</h3></div>${req.card ? `<div class="tiles">${tileHTML(req.card, { big: true })}</div>` : ''}<div class="sheet-actions"><button class="btn" id="noBtn">No</button><button class="btn primary" id="yesBtn">Yes</button></div>`, { noClose: true });
+      openSheet(`<div class="sheet-head"><h3>${esc(req.prompt)}</h3></div>${req.card ? `<div class="cp-card">${promptCardHTML(req.card)}</div>` : ''}<div class="sheet-actions"><button class="btn" id="noBtn">No</button><button class="btn primary" id="yesBtn">Yes</button></div>`, { noClose: true, cls: req.card ? 'cardprompt' : '' });
       $('#yesBtn').onclick = () => answer(true);
       $('#noBtn').onclick = () => answer(false);
       return;
@@ -6734,13 +6776,19 @@ if (typeof module !== 'undefined') module.exports = MTG;
     }).join('') || '<span class="empty">No lands</span>';
   }
 
+  // your turns left before the horde acts (counting the current one)
+  function hordeTurnsLeft() {
+    if (!G || G.mode !== 'horde' || !G.active) return 0;
+    if (G.active.isHorde || G.hordeArrived) return 0;
+    return G.hordeSleep + 1;
+  }
   function playerBar(pl, isMe, hlSet, selSet) {
     const active = G.active === pl;
     const cmd = pl.command.filter(o => !o.emblem);
     const cmdDmg = Object.entries(pl.cmdDamage).filter(([, v]) => v > 0).map(([id, v]) => `${v}`).join('/');
     return `<div class="pbar ${isMe ? 'me' : 'ai'} ${active ? 'active' : ''}">
       <button class="pl-life ${hlSet.has(pl) ? 'hl' : ''} ${selSet.has(pl) ? 'sel' : ''}" data-pid="${pl.id}"><span class="pl-name">${esc(pl.name)}</span>${pl.isHorde ? `<span class="life" title="Cards left in the horde's library">${pl.library.length}</span><span class="life-lbl">cards left</span>` : `<span class="life">${pl.life}</span>`}</button>
-      ${pl.isHorde && G.hordeSleep > 0 ? `<span class="zc arrive">Arrives in ${G.hordeSleep} turn${G.hordeSleep === 1 ? '' : 's'}</span>` : ''}
+      ${pl.isHorde && hordeTurnsLeft() > 0 ? `<span class="zc arrive">${hordeTurnsLeft() === 1 ? (G.active.isHorde ? 'Arrives now' : 'Arrives after this turn') : `Arrives in ${hordeTurnsLeft()} turns`}</span>` : ''}
       ${pl.rad ? `<span class="zc rad" title="Rad counters">☢ ${pl.rad}</span>` : ''}
       <div class="pl-zones">
         ${!isMe && !pl.isHorde ? `<span class="zc" title="Cards in hand">✋ ${pl.hand.length}</span>` : ''}
