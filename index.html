@@ -487,11 +487,15 @@ body.resuming .sheet-wrap { display: none; }
   .sheet.cardprompt .sheet-head { grid-area: head; align-self: center; }
   .sheet.cardprompt .sheet-actions { grid-area: acts; flex-direction: column-reverse; align-items: stretch; }
 }
+.start-row { flex-wrap: wrap; }
+.start-row .level-note { flex: 1 1 100%; order: -1; text-align: right; line-height: 1.4; }
+@media (max-width: 640px) { .start-row .level-note { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .start-row .level-note { text-align: left; } }
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true; window.MTG_BUILD = '20261117065947';
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261117130251';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }</script>
@@ -752,7 +756,7 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
     for (const k of ch.kws) { const m = /^Protection from (\w+)/.exec(k); if (m) ch.protections.add(m[1].toLowerCase()); if (k === 'Protection:Card.MultiColor') ch.protections.add('multicolored'); }
     ch.power = P; ch.toughness = T;
     // Horde Magic: the horde's creatures have haste and attack each combat
-    if (o.controller && o.controller.isHorde && ch.types.includes('Creature')) { ch.kws.add('Haste'); ch.mustAttack = true; }
+    if (o.controller && o.controller.isHorde && ch.types.includes('Creature')) { if (!o.game || o.game.hordeHaste !== false) ch.kws.add('Haste'); ch.mustAttack = true; }
     o._ch = ch; o._chv = g ? g.version : -1;
     return ch;
   }
@@ -1664,6 +1668,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
         this.hordeHeadStart = opts.hordeHeadStart != null ? opts.hordeHeadStart : 3;
         this.hordeSleep = Math.max(0, this.hordeHeadStart - 1);
         this.hordeReveals = opts.hordeReveals || 1;
+        this.hordeHaste = opts.hordeHaste !== false;       // horde creatures attack the turn they arrive
+        this.survivorDraw = opts.survivorDraw || 1;        // cards the survivor draws each turn
+        this.hordeRevealCap = opts.hordeRevealCap || 0;    // most cards the horde reveals per turn (0 = no limit)
         this.players[1].life = 0;
       }
       for (const pl of this.players) this.loadDeck(pl, opts.decks[pl.id]);
@@ -1819,7 +1826,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const tokens = {};
       const spells = [];
       let nontoken = 0;
-      while (h.library.length && nontoken < this.hordeReveals) {
+      let revealed = 0;
+      while (h.library.length && nontoken < this.hordeReveals && !(this.hordeRevealCap && revealed >= this.hordeRevealCap)) {
+        revealed++;
         const o = h.library.shift();
         if (o.hordeToken) {
           o.zone = 'gone'; this.objs.delete(o.id);
@@ -2340,6 +2349,11 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (this.mode === 'horde') {
           this.active = this.players[0];
           this.log(`You have a ${this.hordeHeadStart}-turn head start before the horde arrives. Prepare your defenses.`, 'big');
+          const extras = [];
+          if (this.survivorDraw > 1) extras.push(`you draw ${this.survivorDraw} cards each turn`);
+          if (this.hordeRevealCap) extras.push(`the horde reveals at most ${this.hordeRevealCap} cards a turn`);
+          if (!this.hordeHaste) extras.push(`horde creatures don't have haste`);
+          if (extras.length) this.log(`Rules for this game: ${extras.join('; ')}.`);
           await this.mulligan(this.players[0]);
         } else {
           this.active = this.players[Math.floor(this.rng() * 2)];
@@ -2413,7 +2427,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       await this.runStep('upkeep');
       // draw
       this.step = 'draw';
-      if (!first || this.mode === 'commander' && false) this.draw(ap, 1);
+      if (!first || this.mode === 'commander' && false) this.draw(ap, this.mode === 'horde' && !ap.isHorde ? this.survivorDraw : 1);
       await this.runStep('draw', true);
       // main 1
       await this.runStep('main1');
@@ -5904,9 +5918,12 @@ if (typeof module !== 'undefined') module.exports = MTG;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   let DATA = null;
   const HORDE_LEVELS = {
-    skirmish: { label: 'Skirmish', size: 50, head: 4, desc: '50-card horde · 4-turn head start' },
-    siege: { label: 'Siege', size: 75, head: 3, desc: '75-card horde · 3-turn head start' },
-    full: { label: 'The Full Horde', size: 100, head: 3, desc: 'every card in the horde · 3-turn head start' },
+    skirmish: { label: 'Skirmish', size: 40, head: 4, rules: { haste: false, draw: 2, cap: 2 }, desc: '40-card horde · 4-turn head start',
+      note: 'Skirmish: a 40-card horde and a 4-turn head start. You draw 2 cards each turn, the horde reveals at most 2 cards a turn, and its creatures don\'t have haste, so each new wave waits a turn before attacking.' },
+    siege: { label: 'Siege', size: 75, head: 3, rules: { haste: true, draw: 2, cap: 0 }, desc: '75-card horde · 3-turn head start',
+      note: 'Siege: a 75-card horde and a 3-turn head start. You draw 2 cards each turn. Horde creatures have haste.' },
+    full: { label: 'The Full Horde', size: 100, head: 3, rules: { haste: true, draw: 1, cap: 0 }, desc: 'every card in the horde · 3-turn head start',
+      note: 'The Full Horde: every card in the horde and a 3-turn head start. You draw 1 card each turn. Horde creatures have haste.' },
   };
   const S = { hordeLevel: 'siege', hordeLife: 20, horde: null, hordeSide: 'all', mode: 'constructed', mine: null, theirs: null, q: '', type: 'all', colors: new Set(), recent: false, pick: 'mine', life: 40, speed: 1 };
   let G = null, HUMAN = null, AIP = null;
@@ -6083,6 +6100,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         </div>
         <div class="start-row">
           ${horde ? `<label class="lifesel">Difficulty <select id="hordeLevelSel">${Object.entries(HORDE_LEVELS).map(([k, v]) => `<option value="${k}" ${S.hordeLevel === k ? 'selected' : ''}>${v.label}: ${v.desc}</option>`).join('')}</select></label>
+            <span class="muted small level-note" id="levelNote">${esc(HORDE_LEVELS[S.hordeLevel].note)}</span>
             <label class="lifesel">Your life <select id="hordeLifeSel">${[20, 30, 40].map(v => `<option ${v === S.hordeLife ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
           ${S.mode === 'commander' ? `<label class="lifesel">Starting life <select id="lifeSel">${[20, 30, 40].map(v => `<option ${v === S.life ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : (horde ? '' : '<span></span>')}
           <label class="lifesel">AI speed <select id="speedSel"><option value="1" ${S.speed == 1 ? 'selected' : ''}>Normal</option><option value="0.4" ${S.speed == 0.4 ? 'selected' : ''}>Fast</option><option value="2" ${S.speed == 2 ? 'selected' : ''}>Slow</option></select></label>
@@ -6114,7 +6132,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const side = S.hordeSide;
     const list = DATA.hordes.filter(h => side === 'all' || h.side === side);
     return `<div class="hg-head"><h2>Choose a horde</h2><div class="seg" role="radiogroup" aria-label="Show">${[['all', 'All'], ['Villains', 'Villains'], ['Heroes', 'Heroes']].map(([v, l]) => `<button class="${side === v ? 'on' : ''}" data-hside="${v}" role="radio" aria-checked="${side === v}">${l}</button>`).join('')}</div></div>
-      <p class="muted small hg-rules">The horde has no life total and no hand. Each turn it reveals cards from the top of its library until it hits a card that isn't a token: every token joins the battlefield and that card is cast for free. Its creatures have haste and attack every turn, and it never blocks. Damage to the horde mills its library. Destroy every creature after its library runs out to win.</p>
+      <p class="muted small hg-rules">The horde has no life total and no hand. Each turn it reveals cards from the top of its library until it hits a card that isn't a token: every token joins the battlefield and that card is cast for free. Its creatures attack every turn (with haste on Siege and The Full Horde), and it never blocks. Damage to the horde mills its library. Destroy every creature after its library runs out to win.</p>
       <div class="hgrid">
         <button class="hcard random ${!S.horde ? 'on' : ''}" data-horde="random"><span class="hc-uni">Surprise me</span><span class="hc-name">Random horde</span><span class="hc-blurb">Face any of the ${DATA.hordes.length} hordes.</span></button>
         ${list.map(h => `<button class="hcard ${S.horde && S.horde.id === h.id ? 'on' : ''}" data-horde="${esc(h.id)}">
@@ -6159,7 +6177,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; S.type = 'all'; S.mine = S.mine && (S.mode === 'horde' || S.mine.mode === S.mode) ? S.mine : null; S.pick = 'mine'; saveSetup(); renderSetup(); });
     document.querySelectorAll('[data-horde]').forEach(b => b.onclick = () => { const id = b.dataset.horde; S.horde = id === 'random' ? null : DATA.hordes.find(h => h.id === id); S.pick = 'mine'; renderSetup(); });
     document.querySelectorAll('[data-hside]').forEach(b => b.onclick = () => { S.hordeSide = b.dataset.hside; renderSetup(); });
-    const hl = $('#hordeLevelSel'); if (hl) hl.onchange = e => { S.hordeLevel = e.target.value; saveSetup(); };
+    const hl = $('#hordeLevelSel'); if (hl) hl.onchange = e => { S.hordeLevel = e.target.value; saveSetup(); const n = $('#levelNote'); if (n) n.textContent = HORDE_LEVELS[S.hordeLevel].note; };
     const hlf = $('#hordeLifeSel'); if (hlf) hlf.onchange = e => { S.hordeLife = +e.target.value; saveSetup(); };
     document.querySelectorAll('[data-slot]').forEach(b => b.onclick = e => { if (e.target.closest('[data-view]')) return; S.pick = b.dataset.slot; renderSetup(); });
     const findDeck = id => DATA.decks.find(d => d.id === id) || customDecks().find(d => d.id === id);
@@ -6392,6 +6410,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       mode: S.mode, decks: [slimDeck(mine), slimDeck(theirs)], names: ['You', horde ? hordeDef.name : 'Computer'],
       startingLife: horde ? S.hordeLife : (S.mode === 'commander' ? S.life : 20),
       hordeHeadStart: horde ? HORDE_LEVELS[S.hordeLevel].head : null,
+      hordeRules: horde ? HORDE_LEVELS[S.hordeLevel].rules : null,
       hordeId: hordeDef ? hordeDef.id : null, seed: rnd(), artSeed: rnd().toString(36),
     }, []);
   }
@@ -6444,6 +6463,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
     G = new M.Game({
       db: { cards: DATA.cards, tokens: DATA.tokens }, mode: setup.mode, decks: setup.decks, controllers: [ctl0, AIP], names: setup.names,
       startingLife: setup.startingLife, hordeHeadStart: setup.hordeHeadStart == null ? undefined : setup.hordeHeadStart, seed: setup.seed,
+      // games saved before these rules existed resume with the rules they started with
+      hordeHaste: setup.hordeRules ? setup.hordeRules.haste : true, survivorDraw: setup.hordeRules ? setup.hordeRules.draw : 1, hordeRevealCap: setup.hordeRules ? setup.hordeRules.cap : 0,
       log: (msg, cls) => { msg = youGrammar(msg); UI.log.push({ msg, cls, turn: G ? G.turn : 0 }); if (UI.log.length > 600) UI.log.splice(0, 100); scheduleRender(); },
       onChange: scheduleRender,
     });
