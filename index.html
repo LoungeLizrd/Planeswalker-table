@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="Planeswalker">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Marcellus+SC&display=swap">
-<style>:root{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}*,*::before,*::after{box-sizing:border-box}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>:root{color-scheme:dark}*,*::before,*::after{box-sizing:border-box}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
 <style>/* Layout: one-screen game table — opponent on top, you at the bottom, a hand rail and a prompt bar; setup is a single scrolling column. */
 :root {
   --mat: #0f1d1c;
@@ -42,7 +42,10 @@ body { background: var(--mat); color: var(--ink); font-family: var(--f-body); fo
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--mat); }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-#app { height: 100%; }
+/* the app always covers the whole screen; only the top is kept clear of the status bar.
+   The bottom bars add the home-indicator space themselves, so nothing is left blank below them. */
+#app { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; padding-top: env(safe-area-inset-top, 0px); }
+@media (display-mode: standalone) { #app { padding-top: calc(env(safe-area-inset-top, 0px) + 10px); } body::before { height: calc(env(safe-area-inset-top, 0px) + 10px); } }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 
@@ -65,7 +68,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 @keyframes ld { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
 
 /* ---------- setup */
-.setup { max-width: 980px; margin: 0 auto; padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 18px; }
+.setup { max-width: 980px; margin: 0 auto; padding-block: 20px calc(40px + env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 18px; }
 .setup-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; }
 .brand { display: flex; gap: 12px; align-items: center; }
 .brand-mark { font-size: 34px; color: var(--brass); line-height: 1; }
@@ -331,7 +334,7 @@ body.in-game { overflow: hidden; }
 .btn.danger:hover:not(:disabled) { background: var(--bad); color: #1c0905; }
 
 /* ---------- builder: search column + deck column; tabs swap them on phones */
-.builder { height: 100%; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.builder { height: 100%; padding-bottom: env(safe-area-inset-bottom, 0px); display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 .bd-head { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 10px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px)); background: var(--mat-2); border-bottom: 1px solid var(--line); }
 .bd-name { flex: 1 1 200px; min-width: 0; font-family: var(--f-display); font-size: 20px; background: transparent; color: var(--ink); border: 1px solid transparent; border-radius: 8px; padding: 4px 8px; }
 .bd-name:hover, .bd-name:focus { border-color: var(--line); background: var(--mat); outline: none; }
@@ -495,7 +498,7 @@ body.resuming .sheet-wrap { display: none; }
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true; window.MTG_BUILD = '20261117130251';
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261117133005';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }</script>
