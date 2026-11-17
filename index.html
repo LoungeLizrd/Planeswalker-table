@@ -401,6 +401,18 @@ body.in-game { overflow: hidden; }
   .bd-saved { margin-right: auto; }
   .store-note { margin-left: 0; flex-basis: 100%; }
 }
+
+/* ---------- drag and drop from hand */
+.hand .tile, .cmdchip { touch-action: pan-x; }
+.drag-src { opacity: .3; }
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none; margin: 0; box-shadow: 0 18px 40px rgba(0,0,0,.55), 0 0 0 2px var(--brass); transition: none; will-change: transform; }
+.drag-ghost.back { transition: opacity .18s ease; opacity: 0; }
+.drag-ghost.landed { transition: opacity .2s ease, filter .2s ease; opacity: 0; filter: brightness(1.6); }
+body.dragging { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+body.dragging .bf-me { outline: 2px dashed color-mix(in srgb, var(--brass) 55%, transparent); outline-offset: -6px; position: relative; }
+body.dragging .bf-me::after { content: "Drop here to play"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: var(--f-display); color: var(--brass); font-size: 18px; opacity: .6; pointer-events: none; }
+body.dragging .bf-me.drop-hover { outline-color: var(--brass); outline-style: solid; background: radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--brass) 18%, transparent), transparent 70%), var(--mat); }
+body.dragging .bf-me.drop-hover::after { opacity: 1; }
 </style>
 </head>
 <body>
@@ -4485,30 +4497,37 @@ if (typeof module !== 'undefined') module.exports = MTG;
 })(MTG);
 
 /* Card art from Scryfall (self-hosted build only).
-   For each card, fetch every printing and pick the most exclusive art:
-   borderless > extended art > showcase > full art > other special frames > regular. */
+   - Precon decks: each card uses its printing from the deck's own set (or the exact printing the
+     decklist names). If that set also has a borderless or extended-art version, that is used instead.
+   - Custom decks: every land copy gets a different full-art printing, shuffled each game.
+     Other cards use the most exclusive printing: borderless > extended art > showcase > full art > regular.
+   - Outside games (deck builder, deck lists): most exclusive printing. */
 (function (M) {
   'use strict';
   const enabled = typeof window !== 'undefined' && !!window.MTG_ART;
-  const CACHE_KEY = 'mtg.art.v1';
+  const CACHE_KEY = 'mtg.art.v2';
   const PREF_KEY = 'mtg.artOn';
   const RETRY_MS = 24 * 3600 * 1000;
   let cache = {};
-  try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch (e) { cache = {}; }
+  try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; localStorage.removeItem('mtg.art.v1'); } catch (e) { cache = {}; }
   let on = true;
   try { on = localStorage.getItem(PREF_KEY) !== '0'; } catch (e) {}
 
   const queueHi = [], queueLo = [], queued = new Set();
-  let running = false, saveTimer = null, notifyTimer = null;
+  let running = false, saveTimer = null;
   const listeners = [];
-
   function save() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch (e) { /* storage full: keep in memory */ } }, 800);
+    saveTimer = setTimeout(() => {
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); }
+      catch (e) { // storage full: drop the big full-art lists and retry once
+        for (const k of Object.keys(cache)) if (k.startsWith('fa|')) delete cache[k];
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch (e2) { /* keep in memory */ }
+      }
+    }, 800);
   }
-  function notify(key) {
-    for (const fn of listeners) { try { fn(key); } catch (e) { console.error(e); } }
-  }
+  function notify(key) { for (const fn of listeners) { try { fn(key); } catch (e) { console.error(e); } } }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
   // Scryfall name for a card definition
   function keyOf(def) {
@@ -4516,7 +4535,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (def.alt === 'Split') return def.faces.map(f => f.n).join(' // ');
     return def.faces[0].n;
   }
+  const isLandDef = def => /\bLand\b/.test((def.faces[0] && def.faces[0].t) || '');
 
+  // ---------------------------------------------------------------- printings
   function rank(c) {
     const fx = c.frame_effects || [];
     if (c.border_color === 'borderless') return [5, 'Borderless'];
@@ -4529,43 +4550,73 @@ if (typeof module !== 'undefined') module.exports = MTG;
   function facesOf(c) {
     const out = [];
     if (c.card_faces && c.card_faces.length && c.card_faces[0].image_uris) {
-      for (const f of c.card_faces) out.push({ crop: f.image_uris.art_crop, full: f.image_uris.normal, artist: f.artist || c.artist || '' });
-    } else if (c.image_uris) {
-      out.push({ crop: c.image_uris.art_crop, full: c.image_uris.normal, artist: c.artist || '' });
-    }
+      for (const f of c.card_faces) out.push({ c: f.image_uris.art_crop, f: f.image_uris.normal, a: f.artist || c.artist || '' });
+    } else if (c.image_uris) out.push({ c: c.image_uris.art_crop, f: c.image_uris.normal, a: c.artist || '' });
     return out;
   }
-  function choose(list) {
-    let best = null, bestScore = -1;
-    for (const c of list) {
-      if (c.lang && c.lang !== 'en') continue;
-      if (c.oversized || c.layout === 'art_series' || c.layout === 'token' || c.layout === 'double_faced_token') continue;
-      if (!facesOf(c).length) continue;
-      const [r, label] = rank(c);
-      const paper = (c.games || []).includes('paper') ? 1 : 0;
-      const hires = c.highres_image ? 1 : 0;
-      const score = r * 100 + paper * 10 + hires * 5; // ties keep the newest (results are newest first)
-      if (score > bestScore) { bestScore = score; best = { faces: facesOf(c), label, set: c.set_name || '', uri: c.scryfall_uri || '' }; }
-    }
+  // compact printing record
+  function compact(c) {
+    if (c.lang && c.lang !== 'en') return null;
+    if (c.oversized || c.layout === 'art_series' || c.layout === 'token' || c.layout === 'double_faced_token') return null;
+    const f = facesOf(c);
+    if (!f.length) return null;
+    const [r, l] = rank(c);
+    return { n: String(c.collector_number || ''), r, l, s: c.set_name || '', set: String(c.set || '').toUpperCase(), p: (c.games || []).includes('paper') ? 1 : 0, h: c.highres_image ? 1 : 0, f };
+  }
+  function pickBest(list) {
+    let best = null, bs = -1;
+    for (const p of list) { const s = p.r * 100 + p.p * 10 + p.h * 5; if (s > bs) { bs = s; best = p; } }
     return best;
   }
+  function pickRegular(list) {
+    let best = null, bs = -1;
+    for (const p of list) { const s = (p.r === 0 ? 100 : 0) + p.p * 10 + p.h * 5; if (s > bs) { bs = s; best = p; } }
+    return best;
+  }
+  // within one set: borderless, then extended art, then the decklist's exact printing, then a regular one
+  function pickInSet(list, num) {
+    const bl = list.filter(p => p.r === 5); if (bl.length) return pickBest(bl);
+    const ex = list.filter(p => p.r === 4); if (ex.length) return pickBest(ex);
+    if (num) { const exact = list.find(p => p.n.toLowerCase() === String(num).toLowerCase()); if (exact) return exact; }
+    return pickRegular(list);
+  }
 
-  async function fetchOne(key) {
-    const url = 'https://api.scryfall.com/cards/search?unique=prints&order=released&dir=desc&q=' + encodeURIComponent(`!"${key.replace(/"/g, '')}"`);
+  // ---------------------------------------------------------------- fetching
+  async function search(q, extra) {
+    const url = 'https://api.scryfall.com/cards/search?unique=prints&order=released&dir=desc' + (extra || '') + '&q=' + encodeURIComponent(q);
     for (let attempt = 0; attempt < 3; attempt++) {
       let r;
       try { r = await fetch(url, { headers: { Accept: 'application/json' } }); }
       catch (e) { await sleep(1500); continue; }
       if (r.status === 429) { await sleep(2000 * (attempt + 1)); continue; }
-      if (r.status === 404) return { none: true, t: Date.now() };
+      if (r.status === 404) return [];
       if (!r.ok) { await sleep(1000); continue; }
       const j = await r.json();
-      const pick = choose(j.data || []);
-      return pick || { none: true, t: Date.now() };
+      return (j.data || []).map(compact).filter(Boolean);
     }
-    return null; // network trouble: try again later in this session
+    return null; // network trouble: retry later this session
   }
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  const exact = name => `!"${name.replace(/"/g, '')}"`;
+  async function fetchKey(key) {
+    const [kind, a, b] = key.split('|');
+    if (kind === 'n') { // by name: best and regular
+      const list = await search(exact(a));
+      if (list == null) return null;
+      if (!list.length) return { none: true, t: Date.now() };
+      return { best: pickBest(list), reg: pickRegular(list) };
+    }
+    if (kind === 's') { // one set's printings of a card: key s|SET|name
+      const list = await search(`${exact(b)} set:${a.toLowerCase()}`, '&include_variations=true');
+      if (list == null) return null;
+      return list.length ? { list } : { none: true, t: Date.now() };
+    }
+    if (kind === 'fa') { // full-art printings of a land
+      const list = await search(`${exact(a)} is:fullart`);
+      if (list == null) return null;
+      return list.length ? { list } : { none: true, t: Date.now() };
+    }
+    return { none: true, t: Date.now() };
+  }
 
   async function pump() {
     if (running) return;
@@ -4573,31 +4624,98 @@ if (typeof module !== 'undefined') module.exports = MTG;
     try {
       while (queueHi.length || queueLo.length) {
         const key = queueHi.length ? queueHi.shift() : queueLo.shift();
-        if (cache[key] && !(cache[key].none && Date.now() - cache[key].t > RETRY_MS)) { queued.delete(key); continue; }
-        const res = await fetchOne(key);
+        if (have(key)) { queued.delete(key); continue; }
+        const res = await fetchKey(key);
         queued.delete(key);
         if (res) { cache[key] = res; save(); notify(key); }
         await sleep(110); // Scryfall asks for at most ~10 requests per second
       }
     } finally { running = false; }
   }
+  function have(key) { const e = cache[key]; return !!e && !(e.none && Date.now() - e.t > RETRY_MS); }
   function enqueue(key, hi) {
-    if (!key) return;
     if (queued.has(key)) { if (hi) { const i = queueLo.indexOf(key); if (i >= 0) { queueLo.splice(i, 1); queueHi.push(key); } } return; }
     queued.add(key);
     (hi ? queueHi : queueLo).push(key);
     pump();
   }
-
-  function lookup(def, hi) {
-    if (!enabled || !on) return null;
-    const key = keyOf(def);
-    if (!key) return null;
-    const e = cache[key];
-    if (e && !e.none) return e;
-    if (e && e.none && Date.now() - e.t < RETRY_MS) return null;
+  // returns cache entry (maybe {none}) or undefined while loading
+  function get(key, hi) {
+    if (have(key)) return cache[key];
     enqueue(key, hi);
-    return null;
+    return undefined;
+  }
+
+  // ---------------------------------------------------------------- resolving an object's art
+  function out(p, fi) {
+    if (!p) return null;
+    const face = p.f[Math.min(fi || 0, p.f.length - 1)];
+    return { crop: face.c, full: face.f, artist: face.a, label: p.l, set: p.s };
+  }
+  // undefined = still loading, null = no art
+  function bestByName(name, fi, hi) {
+    const e = get('n|' + name, hi);
+    if (e === undefined) return undefined;
+    return e.none ? null : out(e.best, fi);
+  }
+  function resolveSpec(spec, name, fi, hi) {
+    if (!spec || spec.kind === 'best') return bestByName(name, fi, hi);
+    if (spec.kind === 'set') {
+      const e = get('s|' + spec.set + '|' + name, hi);
+      if (e === undefined) return undefined;
+      if (e.none) { // set unknown to Scryfall: fall back to a regular printing of the card
+        const n = get('n|' + name, hi);
+        if (n === undefined) return undefined;
+        return n.none ? null : out(n.reg || n.best, fi);
+      }
+      return out(pickInSet(e.list, spec.num), fi);
+    }
+    if (spec.kind === 'fullart') {
+      const e = get('fa|' + name, hi);
+      if (e === undefined) return undefined;
+      if (e.none || !e.list.length) return bestByName(name, fi, hi);
+      const L = e.list.length;
+      const perm = permutation(L, spec.seed + '|' + name);
+      return out(e.list[perm[spec.slot % L]], fi);
+    }
+    return bestByName(name, fi, hi);
+  }
+  function permutation(n, seedStr) {
+    let h = 2166136261;
+    for (let i = 0; i < seedStr.length; i++) { h ^= seedStr.charCodeAt(i); h = Math.imul(h, 16777619); }
+    let s = h >>> 0 || 1;
+    const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+    const a = [...Array(n).keys()];
+    for (let i = n - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+
+  // Give every card object in a new game its art rule
+  function setupGame(game, decks) {
+    if (!enabled) return;
+    const seed = Math.random().toString(36).slice(2);
+    game.players.forEach((pl, idx) => {
+      const deck = decks[idx];
+      if (!deck) return;
+      const objs = pl.library.concat(pl.hand, pl.command).filter(o => !o.emblem && !o.isToken);
+      const used = {}; // name -> copies assigned so far
+      for (const o of objs) {
+        const name = keyOf(o.def);
+        if (!name) continue;
+        const k = used[name] = (used[name] || 0) + 1;
+        if (deck.custom) {
+          o.artSpec = isLandDef(o.def) ? { kind: 'fullart', slot: k - 1, seed } : { kind: 'best' };
+        } else {
+          // the decklist's exact printings first (in order), then the deck's own set
+          const pr = (deck.prints && (deck.prints[name] || deck.prints[o.def.faces[0].n])) || [];
+          let left = k, spec = null;
+          for (const [n, code] of pr) { if (left <= n) { const [set, num] = code.split(':'); spec = { kind: 'set', set, num }; break; } left -= n; }
+          o.artSpec = spec || (deck.set ? { kind: 'set', set: deck.set, num: null } : { kind: 'best' });
+        }
+      }
+      // queue lookups so art is ready as cards are drawn
+      if (on) for (const o of objs) { const name = keyOf(o.def); if (name) resolveSpec(o.artSpec, name, 0, false); }
+    });
   }
 
   M.Art = {
@@ -4605,22 +4723,25 @@ if (typeof module !== 'undefined') module.exports = MTG;
     isOn: () => enabled && on,
     setOn(v) { on = !!v; try { localStorage.setItem(PREF_KEY, on ? '1' : '0'); } catch (e) {} notify(null); },
     keyOf,
-    // entry for an object's current face: {crop, full, artist, label, set, uri} or null
-    forObj(o, hi) {
-      if (!o || o.isToken || o.emblem || o.effect || /^Manifested /.test(o.name)) return null;
-      const e = lookup(o.def, hi);
-      if (!e) return null;
-      const fi = o.def.alt === 'Split' ? 0 : Math.min(o.faceIdx || 0, e.faces.length - 1);
-      return Object.assign({ label: e.label, set: e.set, uri: e.uri }, e.faces[fi]);
+    setupGame,
+    // {crop, full, artist, label, set} for a game object's face (current face by default), or null
+    forObj(o, hi, faceIdx) {
+      if (!enabled || !on || !o || o.isToken || o.emblem || o.effect || /^Manifested /.test(o.name)) return null;
+      const name = keyOf(o.def); if (!name) return null;
+      const fi = o.def.alt === 'Split' ? 0 : (faceIdx != null ? faceIdx : (o.faceIdx || 0));
+      return resolveSpec(o.artSpec, name, fi, hi) || null;
+    },
+    loadingObj(o, faceIdx) {
+      if (!enabled || !on || !o) return false;
+      const name = keyOf(o.def); if (!name) return false;
+      return resolveSpec(o.artSpec, name, faceIdx || 0, false) === undefined;
     },
     forDef(def, faceIdx, hi) {
-      const e = lookup(def, hi);
-      if (!e) return null;
-      const fi = def.alt === 'Split' ? 0 : Math.min(faceIdx || 0, e.faces.length - 1);
-      return Object.assign({ label: e.label, set: e.set, uri: e.uri }, e.faces[fi]);
+      if (!enabled || !on) return null;
+      const name = keyOf(def); if (!name) return null;
+      return bestByName(name, def.alt === 'Split' ? 0 : faceIdx, hi) || null;
     },
-    pending: key => queued.has(key),
-    prefetch(defs) { if (!enabled || !on) return; for (const d of defs) lookup(d, false); },
+    loadingDef(def) { if (!enabled || !on) return false; const name = keyOf(def); return !!name && bestByName(name, 0, false) === undefined; },
     onUpdate(fn) { listeners.push(fn); },
   };
 })(MTG);
@@ -5156,10 +5277,18 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
 
   // ---------------------------------------------------------------- mana symbols
+  // Mana symbols are labeled by basic land: Plains, Island, Swamp, Mountain, Forest
+  const LAND_LETTER = { W: 'P', U: 'I', B: 'S', R: 'M', G: 'F' };
+  const LAND_NAME = { W: 'Plains', U: 'Island', B: 'Swamp', R: 'Mountain', G: 'Forest', C: 'Colorless' };
+  function pipTitle(s) {
+    const parts = s.split('/').map(x => x === 'P' ? 'Phyrexian' : LAND_NAME[x] || (x === 'X' ? 'X' : x === 'S' ? 'Snow' : /^\d+$/.test(x) ? x + ' generic' : x));
+    return parts.join(' or ') + ' mana';
+  }
   function pip(sym) {
     const s = sym.replace(/[{}]/g, '');
     const cls = /^[WUBRGC]$/.test(s) ? s : (/\//.test(s) ? 'H' : 'N');
-    return `<span class="pip p-${cls}">${esc(s.replace('/P', 'ᵖ').replace('/', ''))}</span>`;
+    const label = s.replace('/P', 'ᵖ').replace('/', '').replace(/[WUBRG]/g, c => LAND_LETTER[c]);
+    return `<span class="pip p-${cls}" title="${esc(pipTitle(s))}">${esc(label)}</span>`;
   }
   function costHTML(cost) {
     if (!cost || cost.none) return '';
@@ -5374,27 +5503,42 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (o && (o.isToken || o.emblem || o.effect)) return '';
     const key = M.Art.keyOf(def);
     if (!key) return '';
+    const fname = def.faces[i] ? def.faces[i].n : key;
+    if (o && o.game) {
+      const a = M.Art.forObj(o, true, i);
+      if (a) return artBlock(a, fname);
+      if (!M.Art.loadingObj(o, i)) return '';
+      return `<div class="fullcard pending" data-artoid="${o.id}" data-artface="${i}"><span>Loading art…</span></div>`;
+    }
     const a = M.Art.forDef(def, i, true);
-    if (a) return artBlock(a, def.faces[i] ? def.faces[i].n : key);
-    if (!M.Art.pending(key)) return '';
+    if (a) return artBlock(a, fname);
+    if (!M.Art.loadingDef(def)) return '';
     return `<div class="fullcard pending" data-artkey="${esc(key)}" data-artface="${i}"><span>Loading art…</span></div>`;
   }
-  function fillArtSlots(key) {
-    document.querySelectorAll('.fullcard.pending[data-artkey]').forEach(el => {
-      if (key && el.dataset.artkey !== key) return;
+  function fillArtSlots() {
+    document.querySelectorAll('.fullcard.pending').forEach(el => {
+      const i = +el.dataset.artface || 0;
+      if (el.dataset.artoid) {
+        const o = G && G.byId(+el.dataset.artoid);
+        if (!o) { el.remove(); return; }
+        const a = M.Art.forObj(o, false, i);
+        if (a) el.outerHTML = artBlock(a, o.def.faces[i] ? o.def.faces[i].n : o.name);
+        else if (!M.Art.loadingObj(o, i)) el.remove();
+        return;
+      }
       const def = DATA.cards[el.dataset.artkey] || Object.values(DATA.cards).find(d => M.Art.keyOf(d) === el.dataset.artkey);
       if (!def) { el.remove(); return; }
-      const i = +el.dataset.artface || 0;
       const a = M.Art.forDef(def, i, false);
       if (a) el.outerHTML = artBlock(a, def.faces[i] ? def.faces[i].n : el.dataset.artkey);
-      else if (!M.Art.pending(el.dataset.artkey)) el.remove();
+      else if (!M.Art.loadingDef(def)) el.remove();
     });
   }
   let artTimer = null;
   if (M.Art) M.Art.onUpdate(key => {
     fillArtSlots(key);
-    clearTimeout(artTimer);
+    if (artTimer) return; // refresh at most every 300ms while art streams in
     artTimer = setTimeout(() => {
+      artTimer = null;
       if (G) scheduleRender();
       if (UI.pending && UI.pending.req.type === 'mulligan' && UI.sheet) openPromptSheet(UI.pending.req);
     }, 300);
@@ -5465,11 +5609,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       onChange: scheduleRender,
     });
     document.body.classList.add('in-game');
-    if (M.Art && M.Art.isOn()) {
-      const defs = [];
-      for (const d of [mine, theirs]) for (const nm of d.main.map(x => x[1]).concat(d.commander || [])) if (DATA.cards[nm]) defs.push(DATA.cards[nm]);
-      M.Art.prefetch(defs);
-    }
+    if (M.Art && M.Art.enabled) M.Art.setupGame(G, [mine, theirs]);
     renderGame();
     G.start().then(w => { renderGame(); showGameOver(w); }).catch(e => { console.error(e); UI.log.push({ msg: 'Game error: ' + e.message, cls: 'err' }); renderGame(); });
   }
@@ -5760,6 +5900,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
       ${UI.showLog ? `<aside class="logpane"><div class="lp-head"><b>Game log</b><button class="btn ghost sm" id="logClose">Close</button></div><div class="lp-body">${UI.log.slice().reverse().map(l => `<div class="lg ${l.cls}">${esc(l.msg)}</div>`).join('')}</div></aside>` : ''}
     </div>`;
     bindGame(mode, req);
+    if (DRAG && DRAG.active) {
+      const src = document.querySelector(`.hand [data-oid="${DRAG.o.id}"], .cmdchip[data-oid="${DRAG.o.id}"]`);
+      if (src) src.classList.add('drag-src');
+    }
   }
 
   function groupLands(lands, hlSet, selSet, playable) {
@@ -5812,7 +5956,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const top = G.stack[G.stack.length - 1];
       let msg, btn;
       if (top) { msg = `${top.controller.id === 0 ? 'Your' : "Computer's"} ${top.kind === 'spell' ? top.face.name : 'ability'} is on the stack. Respond, or let it resolve.`; btn = 'Let it resolve'; }
-      else if (G.active.id === 0 && G.step === 'main1') { msg = 'Your main phase. Tap a glowing card to play it.'; btn = G.battlefield.some(o => G.canAttack(o)) ? 'Go to combat' : 'End turn'; }
+      else if (G.active.id === 0 && G.step === 'main1') { msg = 'Your main phase. Drag a glowing card onto the battlefield, or tap it.'; btn = G.battlefield.some(o => G.canAttack(o)) ? 'Go to combat' : 'End turn'; }
       else if (G.active.id === 0 && G.step === 'main2') { msg = 'Second main phase.'; btn = 'End turn'; }
       else if (G.active.id === 1 && G.step === 'attackers') { msg = 'The computer is attacking. Cast instants now, or continue to blocks.'; btn = 'Continue'; }
       else if (G.step === 'blockers') { msg = 'Blocks are set. Last chance for combat tricks.'; btn = 'To damage'; }
@@ -5839,11 +5983,77 @@ if (typeof module !== 'undefined') module.exports = MTG;
   }
 
   // ---------------------------------------------------------------- interactions
-  let pressTimer = null, longPressed = false;
+  let pressTimer = null, longPressed = false, suppressClick = false, DRAG = null, dragBound = false;
+  function playActs(o) {
+    return actionsFor(o).filter(a => a.kind === 'land' || (a.kind === 'cast' && (a.from === 'hand' || a.from === 'command')));
+  }
+  function dropZoneAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    return el ? el.closest('.bf, .midline') : null;
+  }
+  function endDrag(play, x, y) {
+    const d = DRAG; DRAG = null;
+    document.body.classList.remove('dragging');
+    document.querySelectorAll('.drop-hover').forEach(el => el.classList.remove('drop-hover'));
+    document.querySelectorAll('.drag-src').forEach(el => el.classList.remove('drag-src'));
+    if (!d || !d.active) return;
+    suppressClick = true; setTimeout(() => { suppressClick = false; }, 350);
+    const ghost = d.ghost;
+    const zone = play ? dropZoneAt(x, y) : null;
+    const p = UI.pending;
+    const still = p && p.req.type === 'priority' ? d.acts.filter(a => (p.req.acts || []).includes(a)) : [];
+    if (!zone || !still.length) {
+      if (ghost) { ghost.classList.add('back'); setTimeout(() => ghost.remove(), 180); }
+      if (zone && !still.length) flash("You can't play that right now.");
+      return;
+    }
+    if (ghost) { ghost.classList.add('landed'); setTimeout(() => ghost.remove(), 200); }
+    if (still.length === 1) { answer(still[0]); return; }
+    openSheet(`<div class="sheet-head"><h3>How do you want to play ${esc(d.o.name)}?</h3></div><div class="acts">${still.map((a, i) => `<button class="btn ${i ? '' : 'primary'}" data-dact="${i}">${esc(a.label)}</button>`).join('')}</div>`,
+      { onClick: e => { const b = e.target.closest('[data-dact]'); if (!b) return; closeSheet(); answer(still[+b.dataset.dact]); } });
+  }
+  function bindDragOnce() {
+    if (dragBound) return;
+    dragBound = true;
+    window.addEventListener('pointermove', e => {
+      const d = DRAG;
+      if (!d || e.pointerId !== d.id) return;
+      const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+      if (!d.active) {
+        if (d.touch) {
+          if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) { DRAG = null; return; } // sideways: let the hand scroll
+          if (!(dy < -10 && Math.abs(dy) > Math.abs(dx))) return;
+        } else if (Math.hypot(dx, dy) < 6) return;
+        const src = document.querySelector(`.hand [data-oid="${d.o.id}"], .cmdchip[data-oid="${d.o.id}"]`);
+        if (!src) { DRAG = null; return; }
+        clearTimeout(pressTimer);
+        d.active = true;
+        const r = src.getBoundingClientRect();
+        d.w = r.width; d.h = r.height;
+        const g = src.cloneNode(true);
+        g.classList.add('drag-ghost'); g.classList.remove('playable');
+        g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
+        g.removeAttribute('data-oid');
+        document.body.appendChild(g);
+        d.ghost = g;
+        src.classList.add('drag-src');
+        document.body.classList.add('dragging');
+      }
+      e.preventDefault();
+      d.ghost.style.transform = `translate(${e.clientX - d.w / 2}px, ${e.clientY - d.h / 2}px) scale(1.3) rotate(-3deg)`;
+      const zone = dropZoneAt(e.clientX, e.clientY);
+      const target = document.querySelector('.bf-me');
+      if (target) target.classList.toggle('drop-hover', !!zone);
+    }, { passive: false });
+    window.addEventListener('pointerup', e => { if (DRAG && e.pointerId === DRAG.id) endDrag(true, e.clientX, e.clientY); });
+    window.addEventListener('pointercancel', e => { if (DRAG && e.pointerId === DRAG.id) endDrag(false); });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape' && DRAG) endDrag(false); });
+  }
   function bindGame(mode, req) {
     const app = $('#app');
     app.onclick = e => {
       if (longPressed) { longPressed = false; return; }
+      if (suppressClick) { suppressClick = false; return; }
       const zb = e.target.closest('[data-zone]');
       if (zb) { showZone(G.players[+zb.dataset.zp], zb.dataset.zone); return; }
       const pc = e.target.closest('[data-pid]');
@@ -5906,9 +6116,17 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const oc = e.target.closest('[data-oid]');
       if (!oc) return;
       clearTimeout(pressTimer);
-      pressTimer = setTimeout(() => { longPressed = true; inspect(G.byId(+oc.dataset.oid), true); }, 520);
+      pressTimer = setTimeout(() => { if (DRAG && DRAG.active) return; DRAG = null; longPressed = true; inspect(G.byId(+oc.dataset.oid), true); }, 520);
+      // drag a playable card from your hand (or a commander chip) onto the battlefield
+      if (e.button !== 0 || mode !== 'priority') return;
+      if (!(oc.closest('.hand') || oc.classList.contains('cmdchip'))) return;
+      const o = G.byId(+oc.dataset.oid);
+      const acts = playActs(o);
+      if (!acts.length) return;
+      DRAG = { o, acts, x0: e.clientX, y0: e.clientY, id: e.pointerId, touch: e.pointerType !== 'mouse', active: false, ghost: null };
     };
-    app.onpointerup = app.onpointercancel = app.onpointerleave = () => clearTimeout(pressTimer);
+    app.onpointerup = app.onpointercancel = () => clearTimeout(pressTimer);
+    bindDragOnce();
     const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
     on('pPass', e => { if (G.step === 'main1' && G.active.id === 0 && /End turn/.test(e.target.textContent)) UI.endTurn = G.turn; answer({ kind: 'pass' }); });
     on('stopAll', e => { UI.stopAll = e.target.checked; });
