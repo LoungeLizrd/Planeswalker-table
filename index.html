@@ -498,7 +498,7 @@ body.resuming .sheet-wrap { display: none; }
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true; window.MTG_BUILD = '20261117193126';
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261117205520';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }</script>
@@ -538,6 +538,7 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
       else if (tok === 'X') c.x++;
       else if (tok === 'Y' || tok === 'Z') c.x++;
       else if (tok === 'S') c.generic++;
+      else if (/^[WUBRGC2][WUBRGP]$/.test(tok)) c.pips.push(tok[0] + '/' + tok[1]); // card data writes hybrid {B/R} as "BR" and Phyrexian {R/P} as "RP"
       else if (tok) c.pips.push(tok);
     }
     return c;
@@ -593,6 +594,19 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
       const [kw, a1, a2] = k.split(':');
       if (kw === 'Prowess') f.triggers.push({ p: { Mode: 'SpellCast', ValidCard: 'Card.nonCreature', ValidActivatingPlayer: 'You', TriggerZones: 'Battlefield', Execute: '__prowess' }, kw: true });
       if (kw === 'Exalted') f.triggers.push({ p: { Mode: 'Attacks', ValidCard: 'Creature.YouCtrl', Alone: 'True', TriggerZones: 'Battlefield', Execute: '__exalted' }, kw: true });
+      // more keyword abilities, written as the triggers they stand for
+      const T = (p, script, check) => f.triggers.push({ p: Object.assign({ TriggerZones: 'Battlefield', Execute: '__kw' }, p), kw: true, script, check });
+      if (kw === 'Persist') T({ Mode: 'ChangesZone', Origin: 'Battlefield', Destination: 'Graveyard', ValidCard: 'Card.Self+counters_EQ0_M1M1' }, 'DB$ ChangeZone | Defined$ TriggeredNewCardLKICopy | Origin$ Graveyard | Destination$ Battlefield | WithCountersType$ M1M1');
+      if (kw === 'Undying') T({ Mode: 'ChangesZone', Origin: 'Battlefield', Destination: 'Graveyard', ValidCard: 'Card.Self+counters_EQ0_P1P1' }, 'DB$ ChangeZone | Defined$ TriggeredNewCardLKICopy | Origin$ Graveyard | Destination$ Battlefield | WithCountersType$ P1P1');
+      if (kw === 'Flanking') T({ Mode: 'AttackerBlockedByCreature', ValidCard: 'Card.Self', ValidBlocker: 'Creature.withoutFlanking' }, 'DB$ Pump | Defined$ TriggeredBlocker | NumAtt$ -1 | NumDef$ -1');
+      if (kw === 'Bushido') { const n = a1 || '1'; T({ Mode: 'Blocks', ValidCard: 'Card.Self' }, `DB$ Pump | Defined$ Self | NumAtt$ +${n} | NumDef$ +${n}`); T({ Mode: 'AttackerBlocked', ValidCard: 'Card.Self' }, `DB$ Pump | Defined$ Self | NumAtt$ +${n} | NumDef$ +${n}`); }
+      if (kw === 'Evolve') T({ Mode: 'ChangesZone', Destination: 'Battlefield', ValidCard: 'Creature.Other+YouCtrl' }, 'DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ 1',
+        (ev, src) => M.isCreature(src) && (M.power(ev.card) > M.power(src) || M.toughness(ev.card) > M.toughness(src)));
+      if (kw === 'Renown') T({ Mode: 'DamageDone', ValidSource: 'Card.Self', ValidTarget: 'Player', CombatDamage: 'True' }, `DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ ${a1 || 1}`,
+        (ev, src) => { if (src.renowned) return false; src.renowned = true; return true; });
+      // Haunt: the "enters" half (the haunting half needs the dead card to stay linked, which isn't tracked)
+      if (kw === 'Haunt' && a1 && f.svars[a1] && !/Instant|Sorcery/.test(raw.t || '')) f.triggers.push({ p: { Mode: 'ChangesZone', Origin: 'Any', Destination: 'Battlefield', ValidCard: 'Card.Self', TriggerZones: 'Battlefield', Execute: a1 }, kw: true });
+      if (kw === 'Ward') T({ Mode: 'BecomesTarget', ValidTarget: 'Card.Self', ValidActivatingPlayer: 'Opponent' }, `DB$ Counter | Defined$ TriggeredSpellAbility | UnlessCost$ ${k.slice(5).trim() || '1'} | UnlessPayer$ TriggeredActivator`);
     }
     faceCache.set(raw, f);
     return f;
@@ -752,6 +766,8 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
       } finally { charDepth--; }
     }
     for (const p of o.pumps) { P += p.p || 0; T += p.t || 0; if (p.kw) for (const k of p.kw) ch.kws.add(normKW(k)); }
+    for (const p of o.pumps) if (p.rmkw) for (const k of p.rmkw) ch.kws.delete(normKW(k));
+    if (g && o.detainUntil && o.detainUntil > g.turn) { ch.cantAttack = true; ch.cantBlock = true; }
     const c = o.counters;
     P += (c.P1P1 || 0) - (c.M1M1 || 0); T += (c.P1P1 || 0) - (c.M1M1 || 0);
     if (c.P1P0) P += c.P1P0; if (c.P0P1) T += c.P0P1; if (c.P2P2) { P += 2 * c.P2P2; T += 2 * c.P2P2; } if (c.M0M1) T -= c.M0M1; if (c.M2M1) { P -= 2 * c.M2M1; T -= c.M2M1; }
@@ -816,8 +832,16 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
     return { obj: o, ab, colors, amount, sac, pain: !!p.SubAbility };
   }
 
+  // Convoke / Improvise let you tap creatures / artifacts to help pay for a spell
+  M.costHelpFor = (pl, f) => (f.keywords.includes('Convoke') || f.keywords.includes('Improvise')) ? { pl, convoke: f.keywords.includes('Convoke'), improvise: f.keywords.includes('Improvise') } : null;
   M.manaSources = function (g, pl) {
     const out = [];
+    const help = g.costHelp && g.costHelp.pl === pl ? g.costHelp : null;
+    if (help) for (const o of g.battlefield) {
+      if (o.controller !== pl || o.tapped) continue;
+      if (help.convoke && isCreature(o)) out.push({ obj: o, ab: null, colors: new Set([...M.colorsOf(o)]), amount: 1, helper: true });
+      else if (help.improvise && hasType(o, 'Artifact') && !isCreature(o)) out.push({ obj: o, ab: null, colors: new Set(), amount: 1, helper: true });
+    }
     for (const o of g.battlefield) {
       if (o.controller !== pl || o.tapped) continue;
       if (isCreature(o) && g.isSick(o)) continue;
@@ -848,7 +872,7 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
     const units = [];
     for (const s of srcs) for (let i = 0; i < s.amount; i++) units.push({ s, i });
     // sort: fewer colors first, non-sac first, non-pain first
-    const score = u => (u.s.sac ? 100 : 0) + (u.s.pain ? 10 : 0) + (u.s.colors.has('C') && u.s.colors.size === 1 ? 0 : u.s.colors.size);
+    const score = u => (u.s.sac ? 100 : 0) + (u.s.helper ? 50 : 0) + (u.s.pain ? 10 : 0) + (u.s.colors.has('C') && u.s.colors.size === 1 ? 0 : u.s.colors.size);
     units.sort((a, b) => score(a) - score(b));
     const used = new Array(units.length).fill(false);
     const assign = [];
@@ -897,6 +921,7 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
     return { uses, life, pool };
   };
   function genericScore(s, need) {
+    if (s.helper) return 1000; // tap lands before tapping creatures/artifacts to help
     let sc = s.sac ? 50 : 0;
     if (s.pain) sc += 5;
     for (const c of s.colors) if (need.has(c)) sc += 3;
@@ -968,6 +993,21 @@ if (typeof module !== 'undefined') module.exports = MTG;
       return true;
     }
     const o = thing;
+    // selectors relative to this effect's targets or remembered cards: "Targeted.Self" is the target itself,
+    // "Targeted.sameName" any card with the target's name, "Remembered.Creature" a remembered creature
+    if ((type === 'Targeted' || type === 'TargetedCard' || type === 'Remembered') && ctx.curNode && M.resolveDefined) {
+      const refs = (M.resolveDefined(type === 'TargetedCard' ? 'Targeted' : type, ctx, ctx.curNode) || []).filter(x => x && !isPlayer(x)).map(x => x.obj || x);
+      const rest = [];
+      let named = false;
+      for (const pr of props) {
+        if (pr === 'Self') continue;
+        if (pr === 'sameName') { named = true; continue; }
+        rest.push(pr);
+      }
+      if (named ? !refs.some(r => r.name === o.name) : !refs.includes(o)) return false;
+      for (const pr of rest) if (!cardProp(pr, o, ctx)) return false;
+      return true;
+    }
     if (type === 'Any') { if (!(M.isCreature(o) || M.hasType(o, 'Planeswalker') || M.hasType(o, 'Battle'))) return false; }
     else if (type === 'Card' || type === 'Defined' || type === 'Targeted') { /* any card */ }
     else if (type === 'Permanent') { if (o.zone !== 'battlefield' && !(o.zone === 'stack')) { /* in other zones: permanent card */ if (M.hasType(o, 'Instant') || M.hasType(o, 'Sorcery')) return false; } }
@@ -1029,7 +1069,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const r = (ctx.remembered || []).concat((ctx.src && ctx.src.remembered) || []);
     return r.map(x => (x && x.isPlayer) ? x : (x && x.controller)).filter(Boolean);
   }
-  function definedThings(spec, ctx) { return M.resolveDefined ? (M.resolveDefined(spec, ctx, ctx.node) || []) : []; }
+  function definedThings(spec, ctx) { return M.resolveDefined ? (M.resolveDefined(spec, ctx, ctx.curNode || ctx.node) || []) : []; }
   function turnOf(o, field, g) { return o[field] === g.turn; }
 
   function cardProp(pr, o, ctx) {
@@ -1158,6 +1198,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     }
     if ((m = /^AttachedTo (.+)$/.exec(pr))) { const h = g.byId(o.attachedTo); return !!h && matchValid(m[1], h, ctx); }
     if ((m = /^(EnchantedBy|EquippedBy|AttachedBy) (.+)$/.exec(pr))) return g.battlefield.some(x => x.attachedTo === o.id && matchValid(m[2], x, ctx));
+    if ((m = /^NotDefined(\w+)$/.exec(pr))) return !definedThings(m[1], ctx).some(x => (x.obj || x) === o);
     if ((m = /^sharesNameWith (.+)$/.exec(pr))) return definedThings(m[1], ctx).some(x => !x.isPlayer && x.name === o.name);
     if ((m = /^sharesColorWith (.+)$/.exec(pr))) return definedThings(m[1], ctx).some(x => !x.isPlayer && [...M.colorsOf(x)].some(c => M.colorsOf(o).has(c)));
     if ((m = /^sharesCreatureTypeWith (.+)$/.exec(pr))) return definedThings(m[1], ctx).some(x => !x.isPlayer && M.chars(x).sub.some(t => M.hasType(o, t)));
@@ -1208,7 +1249,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const sv = face && face.svars ? face.svars[v] : null;
     let r = 0;
     if (depth > 8) return 0;
-    if (sv != null) r = evalExpr(sv, ctx, face, depth + 1);
+    const stored = ctx && ctx.src && ctx.src.storedSVars && ctx.src.storedSVars[v];
+    if (stored != null) r = stored;
+    else if (sv != null) r = evalExpr(sv, ctx, face, depth + 1);
     else if (v === 'X') r = ctx.x || (ctx.src && ctx.src.xPaid) || 0;
     else r = evalExpr(v, ctx, face, depth + 1);
     if (typeof r !== 'number' || isNaN(r)) r = 0;
@@ -1412,6 +1455,15 @@ if (typeof module !== 'undefined') module.exports = MTG;
       else n = objs.reduce((a, o) => a + cardStat(o, what), 0);
       if (m[1] === 'Sacrificed' && m[2] === 'CardPower' && ctx.lkiPower != null && !objs.length) n = ctx.lkiPower;
       return applyMath(n, m[4], ctx, face, depth);
+    }
+    // "Remembered$Valid Card.!token": how many of those objects match a filter
+    if ((m = /^(Targeted|Remembered|RememberedLKI|Imprinted|TriggeredCard|Sacrificed|Discarded|Exiled)\$Valid (.+?)(\/(?:Plus|Minus|Times|Twice|HalfDown|HalfUp|Negative).*)?$/.exec(s))) {
+      const objs = definedThings(m[1], ctx).filter(x => x && !x.isPlayer).map(x => x.obj || x);
+      return applyMath(objs.filter(o => M.matchValid(m[2], o, ctx)).length, m[3], ctx, face, depth);
+    }
+    // a player's number: "TargetedPlayer$LifeTotal/Twice", "TriggeredPlayer$CardsInHand"
+    if ((m = /^(TargetedPlayer|TriggeredPlayer|TargetedController|TriggeredTarget|TriggeredCardController|EnchantedController|RememberedPlayer)\$(\w+)(\/.*)?$/.exec(s))) {
+      return applyMath(playerCount('Defined' + m[1], m[2], ctx, face, depth), m[3], ctx, face, depth);
     }
     if ((m = /^(TriggerCount|ReplaceCount)\$(\w+)(\/.*)?$/.exec(s))) {
       const t = ctx.trig || {};
@@ -1906,6 +1958,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
             o.counters[parts[1]] = (o.counters[parts[1]] || 0) + n;
           }
         }
+        if (parts[0] === 'Bloodthirst' && this.opponent(o.controller).lifeLostThisTurn > 0) {
+          o.counters.P1P1 = (o.counters.P1P1 || 0) + (+parts[1] || 1);
+        }
         if (parts[0] === 'ETBReplacement') {
           const sv = f.svars[parts[2]];
           if (sv) M.runSVarImmediate(this, o, sv, ctx);
@@ -1951,6 +2006,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     }
     gainLife(pl, n, src) {
       if (n <= 0 || pl.isHorde) return;
+      if (this.staticsOf('CantGainLife').some(s => M.matchValid(s.p.ValidPlayer || 'Player', pl, s.ctx))) { this.log(`${pl.name} can't gain life.`); return; }
       pl.life += n; pl.lifeGainedThisTurn += n;
       this.fire({ type: 'lifegain', player: pl, amount: n });
       this.touch();
@@ -1976,6 +2032,14 @@ if (typeof module !== 'undefined') module.exports = MTG;
     }
     dealDamage(source, target, amount, combat) {
       if (amount <= 0 || !target) return 0;
+      for (const r of this.replacements('DamageDone')) {
+        if (r.p.Prevent || !/Twice|Double/.test(r.p.ReplaceWith || '')) continue;
+        if (r.p.IsCombat === 'True' && !combat) continue;
+        if (r.p.ValidSource && !(source && M.matchValid(r.p.ValidSource, source, r.ctx))) continue;
+        if (r.p.ValidTarget && !M.matchValid(r.p.ValidTarget, target, r.ctx)) continue;
+        amount *= 2;
+      }
+      if (target.preventShield > 0) { const pr = Math.min(target.preventShield, amount); target.preventShield -= pr; amount -= pr; if (pr) this.log(`${pr} damage to ${target.name} is prevented.`); if (amount <= 0) return 0; }
       if (!target.isPlayer && target.zone !== 'battlefield') return 0;
       if (this.protectedFrom(target, source)) return 0;
       const srcCtrl = source && !source.isPlayer ? source.controller : source;
@@ -2048,8 +2112,39 @@ if (typeof module !== 'undefined') module.exports = MTG;
       return o;
     }
     inCombat() { return ['beginCombat', 'attackers', 'blockers', 'firstStrike', 'damage', 'endCombat'].includes(this.step); }
+    // active replacement effects for an event (from permanents on the battlefield)
+    replacements(event) {
+      const out = [];
+      for (const src of this.battlefield) for (const r of src.face.repl) {
+        const p = r.p;
+        if (p.Event !== event) continue;
+        if (p.ActiveZones && !/Battlefield/.test(p.ActiveZones)) continue;
+        if (!M.checkConditions(p, { game: this, src, ctrl: src.controller }, src.face)) continue;
+        out.push({ src, p, ctx: { game: this, src, ctrl: src.controller } });
+      }
+      return out;
+    }
+    // active statics of a mode
+    staticsOf(mode) {
+      const out = [];
+      for (const src of this.battlefield.concat(this.effects)) for (const st of src.face.statics) {
+        if (!(st.p.Mode || '').split(',').includes(mode)) continue;
+        if (!M.staticConditionOK(this, src, st.p, src.face)) continue;
+        out.push({ src, p: st.p, ctx: { game: this, src, ctrl: src.controller } });
+      }
+      return out;
+    }
     addCounters(o, type, n) {
       if (n <= 0 || !o || o.zone !== 'battlefield') return;
+      // counter doublers (Doubling Season, Hardened Scales ...)
+      for (const r of this.replacements('AddCounter')) {
+        if (r.p.ValidCounterType && !r.p.ValidCounterType.split(',').includes(type)) continue;
+        if (r.p.ValidCard && !M.matchValid(r.p.ValidCard.replace(/\+inZoneBattlefield/, ''), o, r.ctx)) continue;
+        if (!r.p.ValidCard && !(r.p.ValidPlayer && type === 'ENERGY')) continue;
+        const rw = r.p.ReplaceWith || '';
+        if (/Double|Twice/.test(rw)) n *= 2;
+        else if (/OneMore/.test(rw)) n += 1;
+      }
       o.counters[type] = (o.counters[type] || 0) + n;
       this.fire({ type: 'counter', card: o, counter: type, amount: n });
       this.touch();
@@ -2080,8 +2175,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
           let tdata;
           try { tdata = this.matchTrigger(tr, ev, src, ctrl); } catch (e) { tdata = null; }
           if (!tdata) continue;
+          if (tr.check && !tr.check(ev, src, this)) continue;
           const exec = p.Execute;
-          let str = exec === '__prowess' ? 'DB$ Pump | Defined$ Self | NumAtt$ +1 | NumDef$ +1' : exec === '__exalted' ? 'DB$ Pump | Defined$ TriggeredAttacker | NumAtt$ +1 | NumDef$ +1' : f.svars[exec];
+          let str = tr.script ? tr.script : exec === '__prowess' ? 'DB$ Pump | Defined$ Self | NumAtt$ +1 | NumDef$ +1' : exec === '__exalted' ? 'DB$ Pump | Defined$ TriggeredAttacker | NumAtt$ +1 | NumDef$ +1' : f.svars[exec];
           if (!str) continue;
           this.pendingTriggers.push({ src, ctrl, str, face: f, trig: tdata, desc: `${src.name} trigger`, optional: !!p.OptionalDecider, tp: p });
         }
@@ -2135,7 +2231,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
           data = { card: ev.card, attacker: ev.card, defender: ev.defender, defPlayer: ev.defPlayer };
           break;
         }
-        case 'AttackersDeclared': {
+        case 'AttackersDeclared': case 'AttackersDeclaredOneTarget': {
           if (ev.type !== 'attackersDeclared') return null;
           if (p.AttackingPlayer && !M.matchValid(p.AttackingPlayer, ev.player, ctx)) return null;
           if (p.ValidAttackers) { const n = ev.attackers.filter(a => M.matchValid(p.ValidAttackers, a, ctx)).length; if (!n) return null; if (p.ValidAttackersAmount) { const mm = /^(LT|LE|EQ|GE|GT)(\d+)$/.exec(p.ValidAttackersAmount); if (mm && !M.CMP[mm[1]](n, +mm[2])) return null; } }
@@ -2156,6 +2252,36 @@ if (typeof module !== 'undefined') module.exports = MTG;
           data = { card: ev.card, attacker: ev.card, blockers: ev.blockers, amount: ev.blockers.length };
           break;
         }
+        case 'AttackerBlockedByCreature': {
+          if (ev.type !== 'blockedBy') return null;
+          if (!vc(ev.card, 'ValidCard')) return null;
+          if (p.ValidBlocker && !M.matchValid(p.ValidBlocker, ev.blocker, ctx)) return null;
+          data = { card: ev.card, attacker: ev.card, blocker: ev.blocker };
+          break;
+        }
+        case 'LandPlayed': {
+          if (ev.type !== 'landPlayed') return null;
+          if (!vc(ev.card, 'ValidCard')) return null;
+          if (p.ValidPlayer && !M.matchValid(p.ValidPlayer, ev.player, ctx)) return null;
+          data = { card: ev.card, player: ev.player };
+          break;
+        }
+        case 'Cycled': {
+          if (ev.type !== 'cycled') return null;
+          if (!vc(ev.card, 'ValidCard')) return null;
+          if (p.ValidPlayer && !M.matchValid(p.ValidPlayer, ev.player, ctx)) return null;
+          data = { card: ev.card, player: ev.player };
+          break;
+        }
+        case 'BecomesTarget': case 'BecomesTargetOnce': {
+          if (ev.type !== 'targeted') return null;
+          if (p.ValidTarget && !M.matchValid(p.ValidTarget, ev.target, ctx)) return null;
+          if (p.ValidSource && !(ev.source && M.matchValid(p.ValidSource, ev.source, ctx))) return null;
+          if (p.SourceType === 'Spell' && ev.item.kind !== 'spell') return null;
+          if (p.ValidActivatingPlayer && !M.matchValid(p.ValidActivatingPlayer, ev.player, ctx)) return null;
+          data = { card: ev.target.isPlayer ? null : ev.target, target: ev.target, source: ev.source, player: ev.player, item: ev.item };
+          break;
+        }
         case 'AttackerUnblocked': {
           if (ev.type !== 'unblocked') return null;
           if (!vc(ev.card, 'ValidCard')) return null;
@@ -2170,7 +2296,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
           data = { card: ev.card, player: ev.player, item: ev.item, amount: ev.card.face.cmc };
           break;
         }
-        case 'DamageDone': case 'DamageDoneOnce': {
+        case 'DamageDone': case 'DamageDoneOnce': case 'DamageDealtOnce': {
           if (ev.type !== 'damage') return null;
           if (p.CombatDamage === 'True' && !ev.combat) return null;
           if (p.CombatDamage === 'False' && ev.combat) return null;
@@ -2420,7 +2546,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (o.controller === ap) {
           o.sickness = false;
           o.loyaltyUsed = false;
-          if (o.tapped && !o.doesntUntap) o.tapped = false;
+          if (o.tapped && !o.doesntUntap && !this.replacements('Untap').some(r => r.p.Layer === 'CantHappen' && M.matchValid(r.p.ValidCard || 'Card.Self', o, r.ctx))) o.tapped = false;
           o.doesntUntap = false;
         }
         o.dealtDamageThisTurn = false;
@@ -2449,7 +2575,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (!chosen.length) break;
       }
       for (const o of this.battlefield) { o.damage = 0; o.deathtouched = false; o.pumps = o.pumps.filter(p => p.until !== 'eot'); if (o.crewed) o.crewed = false; if (o._revertTo) { o.controller = o._revertTo; o._revertTo = null; } }
-      for (const pl of this.players) pl._failed = null;
+      for (const pl of this.players) { pl._failed = null; pl.preventShield = 0; }
+      for (const o of this.battlefield) o.preventShield = 0;
       this.effects = this.effects.filter(e => e.duration === 'Permanent' || (e.duration === 'UntilHostLeavesPlay' && e.host && e.host.zone === 'battlefield'));
       for (const pl of this.players) for (const o of pl.hand) o.pumps = [];
       this.touch();
@@ -2524,6 +2651,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       this.log(`${pl.name} plays ${M.faceName(o, faceIdx)}.`, 'land');
       o.zone = 'limbo';
       this.move(o, 'battlefield', { controller: pl, faceIdx: faceIdx || 0 });
+      this.fire({ type: 'landPlayed', card: o, player: pl });
       return true;
     }
 
@@ -2607,6 +2735,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
       }
       for (const [a, bs] of byAtt) {
         if (M.hasKW(a, 'Menace') && bs.length < 2) { byAtt.delete(a); continue; }
+        // "can't be blocked except by two or more" / "by more than one"
+        const mm = this.staticsOf('MinMaxBlocker').filter(s => M.matchValid(s.p.ValidCard || 'Card.Self', a, s.ctx));
+        if (mm.some(s => s.p.Min && bs.length < +s.p.Min)) { byAtt.delete(a); continue; }
+        for (const s of mm) if (s.p.Max && bs.length > +s.p.Max) bs.length = +s.p.Max;
       }
       for (const [a, bs] of byAtt) {
         a.wasBlocked = true;
@@ -2616,7 +2748,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       this.touch();
       if (byAtt.size) this.log(`${dp.name} blocks: ${[...byAtt].map(([a, bs]) => `${bs.map(b => b.name).join(' + ')} → ${a.name}`).join('; ')}.`, 'combat');
       else this.log(`${dp.name} doesn't block.`, 'combat');
-      for (const [a, bs] of byAtt) { for (const b of bs) this.fire({ type: 'blocks', card: b, attacker: a }); this.fire({ type: 'blocked', card: a, blockers: bs }); }
+      for (const [a, bs] of byAtt) { for (const b of bs) { this.fire({ type: 'blocks', card: b, attacker: a }); this.fire({ type: 'blockedBy', card: a, blocker: b }); } this.fire({ type: 'blocked', card: a, blockers: bs }); }
       for (const a of attackers) if (!a.wasBlocked) this.fire({ type: 'unblocked', card: a });
       await this.priority();
       // damage
@@ -2680,6 +2812,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         const dmg = Math.max(0, M.power(b));
         if (dmg > 0) events.push([b, a, dmg]);
       }
+      if (this.fogTurn === this.turn) { events.length = 0; }
       for (const [s, t, n] of events) {
         let tgt = t;
         if (tgt && !tgt.isPlayer && tgt.zone !== 'battlefield') continue;
@@ -2770,7 +2903,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const ctx = { game: g, src: item.obj, ctrl: item.controller, x: item.x, kicked: item.kicked, node, lenient: true, remembered: item.remembered || [] };
     const valid = p.ValidTgts || 'Card';
     const out = [];
-    const zone = (p.TgtZone || (p.TargetType && /Spell/.test(p.TargetType) ? 'Stack' : 'Battlefield'));
+    // cards moved by ChangeZone are targeted in the zone they come from (e.g. "return target creature card from your graveyard")
+    const originZones = node.api === 'ChangeZone' && p.Origin ? p.Origin.split(',').map(z => z.trim()).filter(z => z && !/^(Library|Hand)$/.test(z)) : [];
+    const fromOrigin = originZones.length && !(originZones.length === 1 && originZones[0] === 'Battlefield') ? originZones.join(',') : null;
+    const zone = (p.TgtZone || fromOrigin || (p.TargetType && /Spell/.test(p.TargetType) ? 'Stack' : 'Battlefield'));
     const zones = zone.split(',').map(z => z.trim().toLowerCase());
     const allowsPlayers = /(^|,)\s*(Player|Opponent|You|Any)/.test(valid);
     if (allowsPlayers) for (const pl of g.players) if (M.matchValid(valid, pl, ctx)) out.push(pl);
@@ -2870,13 +3006,13 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const c = { mana: M.parseMana(''), raw: str || '' };
     c.mana.none = false;
     if (!str) return c;
-    const toks = str.trim().match(/\S+<[^>]*>|\S+/g) || [];
+    const toks = (str.trim().match(/\S+<[^>]*>|\S+/g) || []).map(t => t.replace(/;/g, ',')); // "Artifact;Creature" = artifact or creature
     const manaToks = [];
     for (const t of toks) {
       let m;
       if (t === 'T') c.tap = true;
       else if (t === 'Q') c.untap = true;
-      else if (/^(\d+|[WUBRGCXS]|[WUBRG2C]\/[WUBRGP])$/.test(t)) manaToks.push(t);
+      else if (/^(\d+|[WUBRGCXS]|[WUBRG2C]\/?[WUBRGP])$/.test(t)) manaToks.push(t); // hybrid/Phyrexian may be written "WB" or "W/B"
       else if ((m = /^Sac<(\d+|X)\/([^/>]+)(?:\/[^>]*)?>$/.exec(t))) { if (/^CARDNAME|^Self/.test(m[2])) c.sacSelf = true; else (c.sac = c.sac || []).push({ n: m[1] === 'X' ? 1 : +m[1], valid: m[2] }); }
       else if ((m = /^PayLife<(\d+)>$/.exec(t))) c.payLife = +m[1];
       else if ((m = /^Discard<(\d+)\/([^/>]+)(?:\/[^>]*)?>$/.exec(t))) { if (m[2] === 'CARDNAME') c.discardSelf = true; else c.discard = { n: +m[1], valid: m[2] }; }
@@ -3074,7 +3210,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
     // generic reduction can't go below 0; reductions can eat into generic only
     const m2 = { generic: mana.generic, pips: mana.pips.slice(), x: mana.x, raw: mana.raw };
     if (extra < 0) { m2.generic = Math.max(0, m2.generic + extra); extra = 0; }
-    return { face: f, mana: m2, extra, addl };
+    // Delve: exile cards from your graveyard to pay for generic mana
+    let delve = 0;
+    if (f.keywords.includes('Delve')) { delve = Math.min(m2.generic, pl.graveyard.filter(x => x !== o).length); m2.generic -= delve; }
+    return { face: f, mana: m2, extra, addl, delve };
   };
 
   M.canCastNow = function (g, pl, o, f) {
@@ -3119,7 +3258,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
           const info = M.spellCostInfo(g, pl, o, fi, from);
           if (!info) continue;
           if (info.addl && !M.canPayCost(g, pl, o, info.addl, 0)) continue;
-          if (!M.planPayment(g, pl, info.mana, info.extra)) continue;
+          g.costHelp = M.costHelpFor(pl, f);
+          const payable = M.planPayment(g, pl, info.mana, info.extra);
+          g.costHelp = null;
+          if (!payable) continue;
           if (!quickTargetsOK(g, pl, o, f)) continue;
           acts.push({ kind: 'cast', card: o, faceIdx: fi, from, label: `Cast ${f.name}${from === 'graveyard' ? ' (flashback)' : from === 'command' ? ' (from command zone)' : from === 'exile' ? ' (from adventure)' : ''}` });
         }
@@ -3152,7 +3294,11 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (!sa) return true;
     const node = M.buildTree(sa.str, f);
     if (!node) return true;
-    if (node.choices) return true;
+    if (node.choices) {
+      // a modal spell is playable if at least one mode has what it needs to target
+      const fake = { isStackItem: true, obj: o, controller: pl, node, x: 0 };
+      return node.choices.some(c => ![...walk(c)].some(cc => M.nodeNeedsTargets(cc) && cc.p.TargetMin !== '0' && M.targetCandidates(g, fake, cc, pl).length === 0));
+    }
     if (!M.nodeNeedsTargets(node)) return true;
     const min = node.p.TargetMin != null ? M.evalNum(node.p.TargetMin, { game: g, src: o, ctrl: pl }, f) : 1;
     if (min === 0) return true;
@@ -3230,6 +3376,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
   M.canActivate = function (g, pl, o, ab) {
     const p = ab.p;
     if (ab.cost.unsupported) return false;
+    if (o.detainUntil && o.detainUntil > g.turn) return false;
+    if (o.zone === 'battlefield' && g.staticsOf && g.staticsOf('CantBeActivated').some(s => M.matchValid(s.p.ValidCard || 'Card.Self', o, s.ctx) && !(s.p.ValidSA && /Activated/.test(s.p.ValidSA) && ab.p.API === 'Mana' && false))) return false;
     const sorcery = ab.sorcery || p.SorcerySpeed === 'True' || ab.pw;
     if (sorcery && !(g.active === pl && (g.step === 'main1' || g.step === 'main2') && !g.stack.length)) return false;
     if (ab.pw && o.loyaltyUsed) return false;
@@ -3306,6 +3454,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const mana = { generic: info.mana.generic + item.x * xCount + (kickMana ? kickMana.generic : 0), pips: info.mana.pips.concat(kickMana ? kickMana.pips : []), x: 0 };
     o.zone_before = o.zone;
     const addl = info.addl;
+    g.costHelp = M.costHelpFor(pl, f);
+    try {
     if (addl) {
       addl.mana = mana;
       // pay additional (sac/discard etc.) + mana together
@@ -3313,6 +3463,13 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (!(await M.payCost(g, pl, o, addl, info.extra, item))) return false;
     } else if (mana.generic || mana.pips.length || info.extra > 0) {
       if (!M.payMana(g, pl, mana, info.extra, [])) return false;
+    }
+    } finally { g.costHelp = null; }
+    if (info.delve) {
+      // exile the least useful graveyard cards: lands first, then the cheapest
+      const pool = pl.graveyard.filter(x => x !== o).sort((a, b) => (M.hasType(b, 'Land') - M.hasType(a, 'Land')) || (M.manaValue(a.face.cost) - M.manaValue(b.face.cost)));
+      for (const x of pool.slice(0, info.delve)) { x.zone = 'graveyard'; g.removeFromZone(x); x.zone = 'limbo'; g.move(x, 'exile'); }
+      g.log(`${pl.name} exiles ${info.delve} card(s) from their graveyard for delve.`);
     }
     // move to stack
     const zoneArr = from === 'hand' ? pl.hand : from === 'command' ? pl.command : from === 'graveyard' ? pl.graveyard : pl.exile;
@@ -3331,6 +3488,18 @@ if (typeof module !== 'undefined') module.exports = MTG;
     g.log(`${pl.name} casts ${f.name}${item.x ? ` (X=${item.x})` : ''}${item.kicked ? ' (kicked)' : ''}${M.describeTargets(item)}.`, 'cast');
     g.touch();
     g.fire({ type: 'cast', card: o, player: pl, item });
+    M.fireTargeted(g, item);
+    // storm: copy it for each other spell cast this turn
+    if (f.keywords.includes('Storm')) {
+      const n = g.spellsCastThisTurn.length - 1;
+      for (let i = 0; i < n; i++) {
+        const cp = Object.assign({}, item, { id: M.uid(), copy: true, kind: 'ability', obj: o });
+        cp.node = M.buildTree(item.node ? item.node.str || '' : '', f) || item.node;
+        if (cp.node) { cp.node.targets = []; if (!(await M.chooseTargetsForTree(g, cp, pl))) continue; }
+        g.stack.push(cp);
+      }
+      if (n > 0) g.log(`Storm: ${f.name} is copied ${n} time${n === 1 ? '' : 's'}.`, 'cast');
+    }
     // cascade
     if (f.keywords.includes('Cascade')) await M.cascade(g, pl, o);
     return true;
@@ -3395,7 +3564,19 @@ if (typeof module !== 'undefined') module.exports = MTG;
     g.stack.push(item);
     g.log(`${pl.name} activates ${o.name}: ${ab.label}${M.describeTargets(item)}.`, 'cast');
     g.touch();
+    if (ab.kw === 'Cycling') g.fire({ type: 'cycled', card: o, player: pl });
+    M.fireTargeted(g, item);
     return true;
+  };
+  // "becomes the target of a spell or ability" (heroic and friends), once per thing targeted
+  M.fireTargeted = function (g, item) {
+    const seen = new Set();
+    for (const n of walk(item.node)) for (const t of n.targets || []) {
+      const th = M.refThing(t);
+      if (!th || seen.has(th)) continue;
+      seen.add(th);
+      g.fire({ type: 'targeted', target: th, source: item.obj, item, player: item.controller });
+    }
   };
 
   M.describeTargets = function (item) {
@@ -3530,7 +3711,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
         case 'TriggeredAttacker': case 'TriggeredAttackerLKICopy': if (ctx.trig && (ctx.trig.attacker || ctx.trig.card)) out.push(ctx.trig.attacker || ctx.trig.card); continue;
         case 'TriggeredBlocker': if (ctx.trig && ctx.trig.blocker) out.push(ctx.trig.blocker); continue;
         case 'TriggeredTarget': if (ctx.trig && ctx.trig.target) out.push(ctx.trig.target); continue;
-        case 'TriggeredCardController': case 'TriggeredActivator': case 'TriggeredCardOwner': case 'TriggeredSourceController': case 'TriggeredSpellAbilityController': { const c = ctx.trig && (ctx.trig.card || ctx.trig.source); if (ctx.trig && ctx.trig.player && !c) out.push(ctx.trig.player); else if (c) out.push(ctx.trig.lki ? ctx.trig.lki.controller : c.controller); continue; }
+        case 'TriggeredSpellAbility': case 'TriggeredSourceSA': if (ctx.trig && ctx.trig.item) out.push(ctx.trig.item); continue;
+        case 'TriggeredActivator': if (ctx.trig && ctx.trig.item && ctx.trig.player) { out.push(ctx.trig.player); continue; }
+        // falls through
+        case 'TriggeredCardController': case 'TriggeredCardOwner': case 'TriggeredSourceController': case 'TriggeredSpellAbilityController': { const c = ctx.trig && (ctx.trig.card || ctx.trig.source); if (ctx.trig && ctx.trig.player && !c) out.push(ctx.trig.player); else if (c) out.push(ctx.trig.lki ? ctx.trig.lki.controller : c.controller); continue; }
         case 'TriggeredPlayer': case 'TriggeredDefendingPlayer': case 'DefendingPlayer': case 'TriggeredTargetController': { const p = ctx.trig && (ctx.trig.defPlayer || ctx.trig.player || (ctx.trig.target && (isP(ctx.trig.target) ? ctx.trig.target : ctx.trig.target.controller))); out.push(p || g.opponent(ctx.ctrl)); continue; }
         case 'TriggeredBlockers': if (ctx.trig && ctx.trig.blockers) out.push(...ctx.trig.blockers); continue;
         case 'Sacrificed': case 'SacrificedCards': out.push(...(ctx.sacrificed || [])); continue;
@@ -3602,6 +3786,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (run) {
       const fn = API[node.api];
       if (fn) {
+        ctx.curNode = node; // lets "Targeted.sameName"-style selectors find this effect's targets
         try { await fn(g, node, ctx); }
         catch (e) { if (e instanceof M.GameOver) throw e; console.error(e); g.log(`(error in ${node.api}: ${e.message})`, 'err'); }
       } else {
@@ -3686,7 +3871,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
   API.GainLife = async (g, node, ctx) => {
     const ps = players(affected(node, ctx, 'you'));
     const amt = n(node.p.LifeAmount, ctx, node, 1);
-    for (const pl of ps) { g.gainLife(pl, amt); g.log(`${pl.name} gains ${amt} life.`); }
+    for (const pl of ps) { const before = pl.life; g.gainLife(pl, amt); if (pl.life > before) g.log(`${pl.name} gains ${pl.life - before} life.`); }
   };
   API.LoseLife = async (g, node, ctx) => {
     const ps = players(affected(node, ctx, 'you'));
@@ -3779,8 +3964,17 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const scripts = (p.TokenScript || '').split(',').map(s => s.trim()).filter(Boolean);
     const made = [];
     for (const pl of (owners.length ? owners : [ctx.ctrl])) {
+      // token doublers (Anointed Procession, Doubling Season ...)
+      let mult = 1;
+      for (const r of g.replacements('CreateToken')) {
+        if (!/DoubleToken/.test(r.p.ReplaceWith || '')) continue;
+        if (r.p.ValidToken && !/YouCtrl/.test(r.p.ValidToken)) continue;
+        if (r.p.ValidToken && pl !== r.src.controller) continue;
+        if (r.p.ValidPlayer && !M.matchValid(r.p.ValidPlayer, pl, r.ctx)) continue;
+        mult *= 2;
+      }
       for (const sc of scripts) {
-        const toks = g.createToken(sc, pl, amt, { tapped: p.TokenTapped === 'True', attacking: p.TokenAttacking === 'True' ? g.opponent(pl) : null });
+        const toks = g.createToken(sc, pl, amt * mult, { tapped: p.TokenTapped === 'True', attacking: p.TokenAttacking === 'True' ? g.opponent(pl) : null });
         made.push(...toks);
       }
     }
@@ -3863,7 +4057,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
       }
       return;
     }
-    const objs = cards(affected(node, ctx, p.Defined ? null : 'parent')).filter(o => !o.isStackItem);
+    // no target and nothing named: an ability that moves the card itself ("Return this to its owner's hand")
+    const selfMove = !p.Defined && !p.ValidTgts && !node.parent && !p.ChangeType;
+    const objs = cards(affected(node, ctx, p.Defined ? null : selfMove ? 'self' : 'parent')).filter(o => !o.isStackItem);
     const moved = [];
     for (const o of objs) {
       const fromZoneOk = !p.Origin || origin.some(z => (ZONE[z] || z.toLowerCase()) === o.zone) || p.Origin === 'Any';
@@ -3896,6 +4092,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
     for (const it of items.concat(defined)) {
       const i = g.stack.indexOf(it);
       if (i < 0) continue;
+      // "can't be countered"
+      if (it.kind === 'spell' && (g.replacements('Counter').some(r => r.p.Layer === 'CantHappen' && M.matchValid(r.p.ValidSA || 'Spell', it, r.ctx)) || (it.face.repl || []).some(r => r.p.Event === 'Counter' && /Self/.test(r.p.ValidSA || r.p.ValidCard || '')) || (it.face.keywords || []).some(k => /can't be countered/i.test(k)))) { g.log(`${it.face.name} can't be countered.`); continue; }
       g.stack.splice(i, 1);
       g.log(`${it.kind === 'spell' ? it.face.name : (it.obj ? it.obj.name + "'s ability" : 'Ability')} is countered.`, 'fizzle');
       if (it.kind === 'spell') {
@@ -4153,7 +4351,90 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (node.p.ClearRemembered) { ctx.remembered = []; if (ctx.src) ctx.src.remembered = []; }
     if (node.p.ClearChosenCard) ctx.chosen = [];
   };
-  for (const noop of ['Reveal', 'RevealHand', 'PeekAndReveal', 'StoreSVar', 'Shuffle', 'LookAt', 'ChooseNumber', 'GenericChoice', 'Pump_', 'AlterAttribute', 'ChangeTargets', 'TwoPiles', 'Vote', 'RollDice', 'FlipCoin', 'ChooseDirection', 'NameCard', 'Seek', 'Venture', 'Ring', 'TakeInitiative', 'BecomeMonarch']) {
+  // several creatures each deal damage (to a target, to the same thing, or each to itself)
+  API.EachDamage = async (g, node, ctx) => {
+    const p = node.p;
+    let dealers;
+    if (p.DefinedDamagers) dealers = cards(resolveDefined(p.DefinedDamagers, ctx, node) || []);
+    else dealers = g.battlefield.filter(o => M.matchValid(p.ValidCards || 'Creature', o, ctx));
+    dealers = dealers.filter(o => o && o.zone === 'battlefield');
+    let victims = node.targets && node.targets.length ? nodeTargets(node) : (p.Defined ? resolveDefined(p.Defined, ctx, node) : []);
+    if (p.DefinedDamagers === 'ParentTarget' || p.DefinedDamagers === 'Targeted') victims = p.Defined ? resolveDefined(p.Defined, ctx, node) : victims;
+    for (const d of dealers) {
+      const amt = M.evalNum(p.NumDmg || '1', Object.assign({}, ctx, { src: d }), node.face);
+      const tos = p.EachToItself === 'True' ? [d] : victims.filter(v => v !== d);
+      for (const t of tos) { const th = t.obj || t; if (th) g.dealDamage(d, th, amt); }
+    }
+    if (dealers.length) g.log(`${dealers.map(d => d.name).join(', ')} deal${dealers.length === 1 ? 's' : ''} damage.`);
+  };
+  // ---- simple effects
+  // Fog: no combat damage this turn
+  API.Fog = async (g, node, ctx) => { g.fogTurn = g.turn; g.log('All combat damage will be prevented this turn.'); };
+  // prevention shields on targets (or Defined), used up by the next damage; gone at end of turn
+  API.PreventDamage = async (g, node, ctx) => {
+    const p = node.p;
+    const who = node.targets && node.targets.length ? nodeTargets(node) : (resolveDefined(p.Defined || 'Self', ctx, node) || []);
+    const total = n(p.Amount, ctx, node, 1);
+    const each = p.DividedAsYouChoose ? Math.max(1, Math.floor(total / Math.max(1, who.length))) : total;
+    for (const t of who) { const th = t.obj || t; if (!th) continue; th.preventShield = (th.preventShield || 0) + (p.Amount === 'All' ? 999 : each); g.log(`The next ${p.Amount === 'All' ? 'all' : each} damage to ${th.name} will be prevented.`); }
+  };
+  // coin flip: win/lose sub-abilities
+  API.FlipCoin = async (g, node, ctx) => {
+    const p = node.p;
+    const win = g.rng() < 0.5;
+    g.log(`${ctx.ctrl.name} flips a coin: ${win ? 'wins' : 'loses'} the flip.`);
+    const sv = win ? p.WinSubAbility : p.LoseSubAbility;
+    if (sv && node.face.svars[sv]) await M.execNode(g, M.buildTree(node.face.svars[sv], node.face, node), ctx);
+  };
+  // choose one of several effects (Choices$ SVar names)
+  API.GenericChoice = async (g, node, ctx) => {
+    const p = node.p;
+    const names = (p.Choices || '').split(',').map(s => s.trim()).filter(s => node.face.svars[s]);
+    if (!names.length) return;
+    const options = names.map(nm => M.buildTree(node.face.svars[nm], node.face, node)).filter(Boolean);
+    const who = players(resolveDefined(p.Defined || 'You', ctx, node))[0] || ctx.ctrl;
+    let pick = options[0];
+    if (options.length > 1) { const r = await g.ask(who, { type: 'modes', node, item: { obj: ctx.src, controller: who, node }, options, min: 1, max: 1 }); if (r && r[0]) pick = r[0]; }
+    await M.execNode(g, pick, ctx);
+  };
+  // choose a number; later effects read it as ChosenNumber
+  API.ChooseNumber = async (g, node, ctx) => {
+    const p = node.p;
+    const max = p.Max != null ? n(p.Max, ctx, node, 0) : 20, min = p.Min != null ? n(p.Min, ctx, node, 0) : 0;
+    const v = await g.ask(ctx.ctrl, { type: 'x', card: ctx.src, max: Math.max(min, max), prompt: p.ListTitle ? `Choose the ${p.ListTitle}` : 'Choose a number' });
+    ctx.chosenNumber = Math.max(min, Math.min(max, (v | 0)));
+    if (ctx.src) ctx.src.chosenNumber = ctx.chosenNumber;
+  };
+  // look at / reveal the top cards; remembered for the next part of the effect
+  API.PeekAndReveal = async (g, node, ctx) => {
+    const p = node.p;
+    const who = (node.targets && node.targets.length ? players(nodeTargets(node)) : players(resolveDefined(p.Defined || 'You', ctx, node)))[0] || ctx.ctrl;
+    const top = who.library.slice(-n(p.PeekAmount, ctx, node, 1)).reverse();
+    if (!p.NoReveal && top.length) g.log(`${who.name} reveals ${top.map(o => o.name).join(', ')}.`);
+    if (p.RememberRevealed || p.RememberPeeked) remember(ctx, node, top);
+  };
+  // lose keywords until end of turn
+  API.Debuff = async (g, node, ctx) => {
+    const kws = (node.p.Keywords || '').split('&').map(s => s.trim()).filter(Boolean);
+    const who = node.targets && node.targets.length ? nodeTargets(node) : resolveDefined(node.p.Defined || 'Self', ctx, node);
+    for (const t of who || []) { const o = t.obj || t; if (!o || o.isPlayer || o.zone !== 'battlefield') continue; o.pumps.push({ p: 0, t: 0, until: 'eot', rmkw: kws }); g.log(`${o.name} loses ${kws.join(', ')}.`); }
+  };
+  // detain: can't attack or block, and its abilities can't be activated, until the detainer's next turn
+  API.Detain = async (g, node, ctx) => {
+    for (const t of nodeTargets(node)) { const o = t.obj || t; if (!o || o.isPlayer || o.zone !== 'battlefield') continue; o.detainUntil = g.turn + (g.active === ctx.ctrl ? 2 : 1); g.log(`${o.name} is detained.`); }
+  };
+  // keep a number for later (simple forms)
+  API.StoreSVar = async (g, node, ctx) => {
+    const p = node.p;
+    if (!ctx.src || !p.SVar) return;
+    let v = 0;
+    if (p.Type === 'Number') v = +p.Expression || 0;
+    else if (p.Type === 'Count' || p.Type === 'CountSVar') { try { v = M.evalNum(p.Type === 'Count' ? 'Count$' + p.Expression : p.Expression.split('/')[0], ctx, node.face); } catch (e) { v = 0; } }
+    else return;
+    ctx.src.storedSVars = ctx.src.storedSVars || {};
+    ctx.src.storedSVars[p.SVar] = v;
+  };
+  for (const noop of ['Reveal', 'RevealHand', 'Shuffle', 'LookAt', 'Pump_', 'AlterAttribute', 'ChangeTargets', 'TwoPiles', 'Vote', 'RollDice', 'ChooseDirection', 'NameCard', 'Seek', 'Venture', 'Ring', 'TakeInitiative', 'BecomeMonarch']) {
     if (!API[noop]) API[noop] = async () => {};
   }
   API.Shuffle = async (g, node, ctx) => { for (const pl of players(affected(node, ctx, 'you'))) shuffle(g, pl); };
@@ -4192,7 +4473,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
   API.Effect = async (g, node, ctx) => {
     const p = node.p;
     const sv = node.face.svars;
-    const S = (p.StaticAbilities || '').split(',').map(x => sv[x.trim()]).filter(Boolean);
+    // built-in shorthands some cards use instead of a written-out static
+    const BUILTIN = { MustAttack: 'Mode$ MustAttack | ValidCard$ Creature.IsRemembered', CantBlock: 'Mode$ CantBlock | ValidCard$ Creature.IsRemembered', CantAttack: 'Mode$ CantAttack | ValidCard$ Creature.IsRemembered' };
+    const S = (p.StaticAbilities || '').split(',').map(x => sv[x.trim()] || BUILTIN[x.trim()]).filter(Boolean);
     const T = (p.Triggers || '').split(',').map(x => sv[x.trim()]).filter(Boolean);
     if (!S.length && !T.length) { if (p.ReplacementEffects) { g.unsupported.add('Effect:Replacement'); } return; }
     const raw = { n: p.Name || ((ctx.src ? ctx.src.name : '') + ' effect'), c: 'no cost', t: 'Effect', o: '', S, T, SV: sv };
@@ -5471,7 +5754,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
   // ---------------------------------------------------------------- card index
   const COLOR_WORD = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' };
   function colorsFromCost(cost, set) {
-    for (const tok of (cost || '').split(/\s+/)) for (const ch of tok.split('/')) if ('WUBRG'.includes(ch) && ch.length === 1) set.add(ch);
+    for (const p of M.parseMana(cost || '').pips) for (const ch of p.split('/')) if ('WUBRG'.includes(ch) && ch.length === 1) set.add(ch);
   }
   function infoOf(key, def) {
     const f0 = def.faces[0];
