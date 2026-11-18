@@ -498,7 +498,7 @@ body.resuming .sheet-wrap { display: none; }
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true; window.MTG_BUILD = '20261118082027';
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261118091924';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }</script>
@@ -911,7 +911,13 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
       else ok = false;
     }
     if (!ok || !tap || manaCost) return null; // only simple tap abilities are auto-used
-    if (p.ActivationLimit || p.IsPresent || p.CheckSVar || p.Condition) { /* keep but treat simply */ }
+    // conditional mana ("only if you control a creature with power 4 or greater")
+    if (g && (p.IsPresent || p.CheckSVar || p.Condition) && !M.checkConditions(p, { game: g, src: o, ctrl: o.controller }, o.face)) return null;
+    // restricted mana ("spend this only to cast Eldrazi spells / kicked spells"): only for a matching spell
+    if (p.RestrictValid) {
+      const pf = g && g.payingFor;
+      if (!pf || !pf.card || !p.RestrictValid.split(',').some(v => /^Spell/.test(v.trim()) && M.matchValid(v.trim().replace(/^Spell/, 'Card').replace(/\+Kicked$|\.Kicked$/, ''), pf.card, { game: g, src: o, ctrl: o.controller, lenient: false }) && (!/Kicked/.test(v) || pf.kicked))) return null;
+    }
     let colors;
     const prod = (p.Produced || 'C').trim();
     if (prod === 'Any' || prod === 'Combo Any') colors = new Set(COLORS);
@@ -980,6 +986,12 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
     units.sort((a, b) => score(a) - score(b));
     const used = new Array(units.length).fill(false);
     const assign = [];
+    // a permanent with several mana abilities can still only be tapped once: once one of its abilities is
+    // used, units from its other abilities are off limits
+    const objSrc = new Map();
+    const canUse = k => { const u = units[k]; const s0 = objSrc.get(u.s.obj); return !s0 || s0.s === u.s; };
+    const take = k => { const u = units[k]; const s0 = objSrc.get(u.s.obj); if (s0) s0.n++; else objSrc.set(u.s.obj, { s: u.s, n: 1 }); used[k] = true; };
+    const untake = k => { const u = units[k]; const s0 = objSrc.get(u.s.obj); if (s0 && --s0.n <= 0) objSrc.delete(u.s.obj); used[k] = false; };
     // pool first for pips
     const restPips = [];
     for (const p of pips) {
@@ -994,13 +1006,13 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
       if (i >= restPips.length) return true;
       const po = pipOptions(restPips[i]);
       for (let k = 0; k < units.length; k++) {
-        if (used[k]) continue;
+        if (used[k] || !canUse(k)) continue;
         const u = units[k];
         const c = po.colors.find(c => u.s.colors.has(c));
         if (!c) continue;
-        used[k] = true; assign.push({ k, color: c });
+        take(k); assign.push({ k, color: c });
         if (dfs(i + 1)) return true;
-        used[k] = false; assign.pop();
+        untake(k); assign.pop();
       }
       if (po.alt2) { generic += 2; if (dfs(i + 1)) return true; generic -= 2; }
       if (po.phyrexian && pl.life - life > 2) { life += 2; if (dfs(i + 1)) return true; life -= 2; }
@@ -1015,7 +1027,11 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
       const rest = [];
       for (let k = 0; k < units.length; k++) if (!used[k]) rest.push(k);
       rest.sort((a, b) => genericScore(units[a].s, need) - genericScore(units[b].s, need));
-      for (const k of rest) { if (generic <= 0) break; used[k] = true; assign.push({ k, color: [...units[k].s.colors][0] }); generic--; }
+      // for a permanent not yet tapped, use the ability that makes the most mana
+      const bestSrc = new Map();
+      for (const k of rest) { const s = units[k].s; const cur = bestSrc.get(s.obj); if (!cur || s.amount > cur.amount) bestSrc.set(s.obj, s); }
+      for (let i = rest.length - 1; i >= 0; i--) { const s = units[rest[i]].s; if (!objSrc.has(s.obj) && bestSrc.get(s.obj) !== s) rest.splice(i, 1); }
+      for (const k of rest) { if (generic <= 0) break; if (!canUse(k)) continue; take(k); assign.push({ k, color: [...units[k].s.colors][0] }); generic--; }
     }
     if (generic > 0) return null;
     // collapse to per-source uses
@@ -1045,7 +1061,10 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
 
   M.totalManaAvailable = function (g, pl) {
     let n = 0;
-    for (const s of M.manaSources(g, pl)) if (!s.sac) n += s.amount;
+    // count each permanent once, by its biggest mana ability
+    const best = new Map();
+    for (const s of M.manaSources(g, pl)) if (!s.sac) best.set(s.obj, Math.max(best.get(s.obj) || 0, s.amount));
+    for (const v of best.values()) n += v;
     for (const c in pl.pool) n += pl.pool[c];
     return n;
   };
@@ -4426,9 +4445,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
           const info = M.spellCostInfo(g, pl, o, fi, from);
           if (!info) continue;
           if (info.addl && !M.canPayCost(g, pl, o, info.addl, 0)) continue;
-          g.costHelp = M.costHelpFor(pl, f);
+          g.costHelp = M.costHelpFor(pl, f); g.payingFor = { card: o };
           const payable = M.planPayment(g, pl, info.mana, info.extra);
-          g.costHelp = null;
+          g.costHelp = null; g.payingFor = null;
           if (!payable) continue;
           if (!quickTargetsOK(g, pl, o, f)) continue;
           acts.push({ kind: 'cast', card: o, faceIdx: fi, from, label: `Cast ${f.name}${from === 'graveyard' ? ' (flashback)' : from === 'command' ? ' (from command zone)' : from === 'exile' ? ' (from adventure)' : ''}` });
@@ -4445,9 +4464,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const info = M.spellCostInfo(g, pl, o, a.faceIdx, a.from, { alt: a.alt });
       if (!info) continue;
       if (info.addl && !M.canPayCost(g, pl, o, info.addl, 0)) continue;
-      g.costHelp = M.costHelpFor(pl, f);
+      g.costHelp = M.costHelpFor(pl, f); g.payingFor = { card: o };
       const payable = M.planPayment(g, pl, info.mana, info.extra);
-      g.costHelp = null;
+      g.costHelp = null; g.payingFor = null;
       if (!payable) continue;
       if (a.alt.kw !== 'Bestow' && a.alt.kw !== 'Mutate' && !quickTargetsOK(g, pl, o, f)) continue;
       if (a.alt.kw === 'Fuse' && !quickTargetsOK(g, pl, o, M.face(o.def.faces[1]))) continue;
@@ -4832,7 +4851,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const extraNon = extras.map(M.nonManaCost).filter(Boolean).reduce((a, b) => M.mergeCost(a, b), null);
     if (extraNon) addl = M.mergeCost(addl, extraNon);
     g.lastPaidColors = new Set();
-    g.costHelp = M.costHelpFor(pl, f);
+    g.costHelp = M.costHelpFor(pl, f); g.payingFor = { card: o, kicked: item.kicked };
     try {
     if (addl) {
       addl.mana = mana;
@@ -4842,7 +4861,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     } else if (mana.generic || mana.pips.length || info.extra > 0) {
       if (!M.payMana(g, pl, mana, info.extra, [])) return false;
     }
-    } finally { g.costHelp = null; }
+    } finally { g.costHelp = null; g.payingFor = null; }
     const colorsSpent = g.lastPaidColors ? g.lastPaidColors.size : 0;
     if (emergeSac && emergeSac.zone === 'battlefield') { g.sacrifice(emergeSac); g.log(`${pl.name} sacrifices ${emergeSac.name} (emerge).`); }
     if (item.casualty && item.casualty.zone === 'battlefield') { g.sacrifice(item.casualty); g.log(`${pl.name} sacrifices ${item.casualty.name} (casualty).`); }
