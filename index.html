@@ -234,7 +234,7 @@ body.in-game { overflow: hidden; }
 .sheet-x { position: absolute; top: 8px; right: 10px; font-size: 18px; color: var(--muted); padding: 6px; z-index: 1; }
 .sheet-back { position: absolute; top: 10px; left: 12px; color: var(--brass); font-size: 14px; z-index: 1; }
 .sheet-head h3 { font-family: var(--f-display); font-weight: 400; font-size: 21px; margin: 0 28px 2px 0; text-wrap: balance; }
-.sheet-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; position: sticky; bottom: -18px; background: var(--mat-2); padding-block: 10px 4px; }
+.sheet-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; position: sticky; bottom: -18px; background: var(--mat-2); padding-block: 10px 18px; margin-bottom: -18px; box-shadow: 0 -10px 12px -8px rgba(0,0,0,.45); }
 .tiles { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .tiles.dense .tile { --tile-w: 92px; --tile-h: 120px; }
 .selwrap.on .tile, .scrywrap.down .tile { box-shadow: 0 0 0 3px var(--brass); }
@@ -471,7 +471,7 @@ body.resuming .sheet-wrap { display: none; }
 .sheet.cardprompt { height: 94%; max-height: 94%; width: min(640px, 100%); }
 .sheet.cardprompt .sheet-body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding-block: 14px 10px; }
 .sheet.cardprompt .sheet-head h3 { font-size: 19px; margin: 0; }
-.sheet.cardprompt .sheet-actions { position: static; flex: none; padding: 0; }
+.sheet.cardprompt .sheet-actions { position: static; flex: none; padding: 0; margin: 0; box-shadow: none; }
 .sheet.cardprompt .sheet-actions .btn { min-width: 108px; min-height: 46px; font-size: 16px; }
 .cp-card { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; container-type: size; }
 .cp-card .fullcard { max-height: 100%; }
@@ -498,7 +498,7 @@ body.resuming .sheet-wrap { display: none; }
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true; window.MTG_BUILD = '20261117133005';
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261117193126';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }</script>
@@ -6542,7 +6542,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
     scheduleRender();
   }
   function shouldStop(g, pl, acts) {
-    if (!acts.length) return false;
+    // always stop once in your first main phase, even with nothing playable, so your turn never flies past
+    if (!acts.length) return g.active === pl && g.step === 'main1' && !g.stack.length && UI.mainStop !== g.turn && (UI.mainStop = g.turn, true);
     if (UI.stopAll) return true;
     const top = g.stack[g.stack.length - 1];
     if (top) return top.controller !== pl;
@@ -6841,7 +6842,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const top = G.stack[G.stack.length - 1];
       let msg, btn;
       if (top) { msg = `${top.controller.id === 0 ? 'Your' : (G.mode === 'horde' ? "The horde's" : "Computer's")} ${top.kind === 'spell' ? top.face.name : 'ability'} is on the stack. Respond, or let it resolve.`; btn = 'Let it resolve'; }
-      else if (G.active.id === 0 && G.step === 'main1') { msg = 'Your main phase. Drag a glowing card onto the battlefield, or tap it.'; btn = G.battlefield.some(o => G.canAttack(o)) ? 'Go to combat' : 'End turn'; }
+      else if (G.active.id === 0 && G.step === 'main1') { msg = (UI.pending.req.acts || []).length ? 'Your main phase. Drag a glowing card onto the battlefield, or tap it.' : 'Your main phase. Nothing in your hand can be played right now.'; btn = G.battlefield.some(o => G.canAttack(o)) ? 'Go to combat' : 'End turn'; }
       else if (G.active.id === 0 && G.step === 'main2') { msg = 'Second main phase.'; btn = 'End turn'; }
       else if (G.active.id === 1 && G.step === 'attackers') { msg = `${G.mode === 'horde' ? 'The horde is' : 'The computer is'} attacking. Cast instants now, or continue to blocks.`; btn = 'Continue'; }
       else if (G.step === 'blockers') { msg = 'Blocks are set. Last chance for combat tricks.'; btn = 'To damage'; }
