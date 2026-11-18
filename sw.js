@@ -1,7 +1,7 @@
-/* Planeswalker's Table — offline support.
+/* Magic, the Soloing — offline support.
    The game and its card data are kept on the device so it opens instantly and plays offline.
    A new version of the site replaces these caches the next time it is opened online. */
-const VERSION = '20261117215258';
+const VERSION = '20261117225638';
 const CORE = 'core-' + VERSION;
 const FONTS = 'fonts-v1';
 const ART = 'art-v1';

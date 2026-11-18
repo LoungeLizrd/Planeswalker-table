@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Planeswalker's Table</title>
+<title>Magic, the Soloing</title>
 <meta name="description" content="Play Magic: The Gathering against a computer opponent in Standard or 1v1 Commander with any preconstructed deck.">
 <meta name="theme-color" content="#0f1d1c">
 <link rel="manifest" href="manifest.webmanifest">
@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Planeswalker">
+<meta name="apple-mobile-web-app-title" content="Soloing">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Marcellus+SC&display=swap">
 <style>:root{color-scheme:dark}*,*::before,*::after{box-sizing:border-box}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
@@ -498,7 +498,7 @@ body.resuming .sheet-wrap { display: none; }
 </head>
 <body>
 <div id="app"></div>
-<script>window.MTG_ART = true; window.MTG_BUILD = '20261117215258';
+<script>window.MTG_ART = true; window.MTG_BUILD = '20261117225638';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }</script>
@@ -637,6 +637,8 @@ var MTG = (typeof MTG !== 'undefined') ? MTG : {};
       this.damage = 0;
       this.deathtouched = false;
       this.attachedTo = null;
+      this.attachedPlayer = null;
+      this.suspended = false;
       this.pumps = [];
       this.kicked = 0;
       this.xPaid = 0;
@@ -1049,6 +1051,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       case 'You': case 'YouCtrl': return pl === ctx.ctrl;
       case 'Other': return pl !== ctx.ctrl;
       case 'Active': return pl === ctx.game.active;
+      case 'EnchantedBy': return !!ctx.src && ctx.src.attachedPlayer === pl.id;
       case 'NonActive': return pl !== ctx.game.active;
       default: {
         const m = /^(life|cardsInHand)(LT|LE|EQ|GE|GT|NE)(\w+)$/.exec(pr);
@@ -1062,7 +1065,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (pr === 'hasMostLife' || pr === 'withMostLife') return ctx.game.players.every(x => x.life <= pl.life);
         if (pr === 'hasFewestLife' || pr === 'withLowestLife') return ctx.game.players.every(x => x.life >= pl.life);
         if (pr === 'Defending' || pr === 'DefendingPlayer') return pl !== ctx.game.active;
-        if (pr === 'Monarch') return false;
+        if (pr === 'Monarch' || pr === 'isMonarch') return ctx.game.monarch === pl;
         return unknown('player:' + pr, ctx);
       }
     }
@@ -1131,6 +1134,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
       case 'enchanted': return attachedOfType(g, o, 'Aura');
       case 'unequipped': return !attachedOfType(g, o, 'Equipment');
       case 'unenchanted': return !attachedOfType(g, o, 'Aura');
+      case 'suspended': return !!o.suspended;
+      case 'cmcChosenEvenOdd': { const v = ctx.chosenEvenOdd || (src && src.chosenEvenOdd); return !!v && M.manaValue(o.face.cost) % 2 === (v === 'odd' ? 1 : 0); }
+      case 'ChosenSector': { const v = ctx.chosenSector || (src && src.chosenSector); return !!v && M.sectorOf && M.sectorOf(o) === v; }
+      case 'EnchantedPlayerCtrl': return !!src && src.attachedPlayer != null && o.controller && o.controller.id === src.attachedPlayer;
       case 'IsRemembered': case 'IsTriggerRemembered': return !!(ctx.remembered && ctx.remembered.includes(o)) || !!(src && src.remembered && src.remembered.includes(o));
       case 'IsImprinted': return !!(src && src.remembered && src.remembered.includes(o));
       case 'IsCommander': case 'Commander': return o.isCommander;
@@ -1367,6 +1374,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const g = ctx.game, pl = ctx.ctrl, opp = g.opponent(pl);
     const mine = g.battlefield.filter(o => o.controller === pl);
     switch (name) {
+      case 'Monarch': return g.monarch === pl;
       case 'Threshold': return pl.graveyard.length >= 7;
       case 'Delirium': { const s = new Set(); for (const o of pl.graveyard) for (const t of TYPE_LIST) if (M.hasType(o, t)) s.add(t); return s.size >= 4; }
       case 'Metalcraft': return mine.filter(o => M.hasType(o, 'Artifact')).length >= 3;
@@ -1413,6 +1421,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const one = (p, pr) => {
       let k;
       if (pr === 'LifeTotal') return p.life;
+      if (pr === 'DamageToOppsThisTurn') return g.opponent(p).lifeLostThisTurn || 0;
       if (pr === 'StartingLife') return g.startingLife;
       if (pr === 'CardsInHand') return p.hand.length;
       if (pr === 'CardsInLibrary') return p.library.length;
@@ -1430,7 +1439,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (hp === 'wasDealtDamageThisTurn') return p.lifeLostThisTurn > 0 ? 1 : 0;
         if (/^HasCardsInGraveyard_Card_GE(\d+)$/.test(hp)) return p.graveyard.length >= +hp.match(/\d+$/)[0] ? 1 : 0;
         if (hp === 'BeenAttackedThisCombat') return g.battlefield.some(o => o.attacking === p) ? 1 : 0;
-        if (hp === 'isMonarch') return 0;
+        if (hp === 'isMonarch') return ctx.game.monarch === p ? 1 : 0;
         return 0;
       }
       if ((k = /^Valid(Graveyard|Library|Hand|Exile|Battlefield)? (.+)$/.exec(pr))) {
@@ -1707,6 +1716,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
 
   class GameOver extends Error { constructor(w) { super('game over'); this.winner = w; } }
   M.GameOver = GameOver;
+  // "end the turn" (Time Stop): unwinds the turn straight to its cleanup step
+  class EndTurnSignal extends Error { constructor() { super('end the turn'); } }
+  M.EndTurnSignal = EndTurnSignal;
+  M.isSignal = e => e instanceof GameOver || e instanceof EndTurnSignal;
 
   function shuffle(a, rng) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
   function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -1865,6 +1878,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (opts.x != null) o.xPaid = opts.x;
         if (opts.castInfo) o.castInfo = opts.castInfo;
         if (opts.faceIdx != null) o.faceIdx = opts.faceIdx;
+        if (o.def.faces.length > 1 && (o.def.faces[0].K || []).includes('Daybound')) { if (!this.dayNight) this.setDayNight('day'); else if (this.dayNight === 'night') o.faceIdx = 1; }
         if (opts.faceDown) { o.faceDown = true; o.faceDownWard = !!opts.ward; o.manifested = !!opts.manifested; }
         this.battlefield.push(o);
         this.enterBattlefield(o, opts);
@@ -1987,6 +2001,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         }
         if (parts[0] === 'ETBReplacement') {
           const sv = f.svars[parts[2]];
+          if (parts[1] === 'Copy') o.pendingCopy = true;
           if (sv) M.runSVarImmediate(this, o, sv, ctx);
         }
       }
@@ -2132,6 +2147,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
       const wither = source && !source.isPlayer && M.hasKW(source, 'Wither');
       if (target.isPlayer) {
         if (infect) target.poison += amount; else this.loseLife(target, amount);
+        // combat damage to the monarch takes the crown
+        if (combat && this.monarch === target && source && !source.isPlayer && M.isCreature(source) && source.controller !== target) M.setMonarch(this, source.controller);
+        // a level-4 Ring-bearer: each opponent loses 3 life
+        if (combat && source && source.ringBearer && (source.controller.ringLevel || 0) >= 4) this.pendingTriggers.push({ src: source, ctrl: source.controller, str: 'DB$ LoseLife | Defined$ Opponent | LifeAmount$ 3', face: M.ringFace(), trig: {}, desc: 'The Ring' });
         // commander damage
         if (combat && source && source.isCommander) { target.cmdDamage[source.id] = (target.cmdDamage[source.id] || 0) + amount; }
       } else if (M.hasType(target, 'Planeswalker') && !M.isCreature(target)) {
@@ -2346,6 +2365,23 @@ if (typeof module !== 'undefined') module.exports = MTG;
           data = { card: ev.card, attacker: ev.card, blocker: ev.blocker };
           break;
         }
+        case 'RingTemptsYou': {
+          if (ev.type !== 'ringTempts') return null;
+          if (p.ValidPlayer ? !M.matchValid(p.ValidPlayer, ev.player, ctx) : ev.player !== ctrl) return null;
+          data = { player: ev.player };
+          break;
+        }
+        case 'BecomeMonarch': {
+          if (ev.type !== 'monarch') return null;
+          if (p.ValidPlayer && !M.matchValid(p.ValidPlayer, ev.player, ctx)) return null;
+          data = { player: ev.player };
+          break;
+        }
+        case 'DayTimeChanges': {
+          if (ev.type !== 'daytime') return null;
+          data = {};
+          break;
+        }
         case 'TurnFaceUp': {
           if (ev.type !== 'turnedFaceUp') return null;
           if (!vc(ev.card, 'ValidCard')) return null;
@@ -2532,6 +2568,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
           if (o.zone !== 'battlefield') continue;
           // +1/+1 and -1/-1 annihilate
           if (o.counters.P1P1 > 0 && o.counters.M1M1 > 0) { const n = Math.min(o.counters.P1P1, o.counters.M1M1); o.counters.P1P1 -= n; o.counters.M1M1 -= n; this.touch(); }
+          // a clone that is still choosing what to copy isn't a 0/0 yet
+          if (o.pendingCopy && this.pendingTriggers.concat(this.stack).some(t => (t.src || t.obj) === o)) continue;
+          if (o.pendingCopy) o.pendingCopy = false;
           if (M.isCreature(o)) {
             const t = M.toughness(o);
             if (t <= 0) { this.move(o, 'graveyard'); changed = true; continue; }
@@ -2542,7 +2581,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
           }
           if (M.hasType(o, 'Planeswalker') && !M.isCreature(o) && (o.counters.LOYALTY || 0) <= 0) { this.move(o, 'graveyard'); changed = true; continue; }
           if (M.hasType(o, 'Battle') && (o.counters.DEFENSE || 0) <= 0 && o.face.raw.df) { this.move(o, 'graveyard'); changed = true; continue; }
-          if (M.hasType(o, 'Aura')) {
+          if (M.hasType(o, 'Aura') && o.attachedPlayer != null) { /* enchants a player */ }
+          else if (M.hasType(o, 'Aura') && o.enchantingGrave && this.pendingTriggers.concat(this.stack).some(t => (t.src || t.obj) === o)) { /* waiting to return its card */ }
+          else if (M.hasType(o, 'Aura')) {
             const host = this.byId(o.attachedTo);
             if (!host || host.zone !== 'battlefield') { this.move(o, 'graveyard'); changed = true; continue; }
           }
@@ -2657,7 +2698,17 @@ if (typeof module !== 'undefined') module.exports = MTG;
         o.dealtDamageThisTurn = false;
       }
       this.touch();
-      // upkeep
+      // day / night: it becomes night if the previous turn's player cast no spells, day if they cast two or more
+      if (this.dayNight && this.prevTurnSpells != null) {
+        if (this.dayNight === 'day' && this.prevTurnSpells === 0) this.setDayNight('night');
+        else if (this.dayNight === 'night' && this.prevTurnSpells >= 2) this.setDayNight('day');
+      }
+      // someone controls this player's turn (Cruel Entertainment)
+      const ctlBy = this.controlNext && this.controlNext[ap.id];
+      if (ctlBy) { delete this.controlNext[ap.id]; ap._ownCtl = ap.ctl; ap.ctl = ctlBy.ctl.isAI ? M.AI.controller : M.AI.passiveController; this.log(`${ctlBy.name} controls ${ap.name} this turn.`, 'big'); }
+      try {
+      // upkeep: suspended cards lose a time counter, and are cast when the last one comes off
+      for (const c of ap.exile.filter(x => x.suspended).slice()) await M.tickSuspend(this, c);
       await this.runStep('upkeep');
       // draw
       this.step = 'draw';
@@ -2674,6 +2725,17 @@ if (typeof module !== 'undefined') module.exports = MTG;
       await this.extraCombatPhases();
       // end
       await this.runStep('end');
+      } catch (e) {
+        if (!(e instanceof EndTurnSignal)) throw e;
+        // exile everything on the stack and skip to cleanup
+        for (const it of this.stack.splice(0)) if (it.kind === 'spell' && it.obj.zone === 'stack') { it.obj.zone = 'limbo'; this.move(it.obj, 'exile'); }
+        for (const o of this.battlefield) { o.attacking = null; o.blocking = []; o.blockedBy = []; }
+        this.pendingTriggers = [];
+        this.log('The turn ends.', 'turn');
+      } finally {
+        if (ap._ownCtl) { ap.ctl = ap._ownCtl; ap._ownCtl = null; }
+        this.prevTurnSpells = this.spellsCastThisTurn.filter(s => s.player === ap).length;
+      }
       // cleanup
       this.step = 'cleanup';
       while (ap.hand.length > 7) {
@@ -2692,6 +2754,21 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (this.stack.length) await this.priority();
     }
 
+    setDayNight(v) {
+      const was = this.dayNight;
+      if (was === v) return;
+      this.dayNight = v;
+      this.log(`It becomes ${v}.`, 'turn');
+      // daybound permanents are their front face by day, nightbound back face by night
+      for (const o of this.battlefield) {
+        const ks = o.def.faces.map(f => f.K || []);
+        if (!ks.some(k => k.includes('Daybound')) || o.def.faces.length < 2) continue;
+        const want = v === 'night' ? 1 : 0;
+        if (o.faceIdx !== want) { o.faceIdx = want; o._abCache = null; this.log(`${o.def.faces[1 - want].n} transforms into ${o.def.faces[want].n}.`); }
+      }
+      if (was) this.fire({ type: 'daytime', value: v });
+      this.touch();
+    }
     consumeSkip(pl, step) {
       const k = pl.id + ':' + step;
       if (!this.skipSteps || !this.skipSteps[k]) return false;
@@ -2719,6 +2796,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
       }
       this.fire({ type: 'phase', step, player: this.active });
       if (step === 'main1' && this.active.isHorde) { await this.processTriggers(); await this.hordeReveal(); }
+      // the monarch draws a card at the beginning of their end step
+      if (step === 'end' && this.monarch === this.active) { this.log(`${this.active.name} draws a card for being the monarch.`); this.draw(this.active, 1); }
       await this.priority();
     }
     emptyPools() { for (const pl of this.players) for (const c in pl.pool) pl.pool[c] = 0; }
@@ -2759,7 +2838,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         if (action.kind === 'cast') return await M.castSpell(this, pl, action);
         if (action.kind === 'activate') return await M.activate(this, pl, action);
       } catch (e) {
-        if (e instanceof GameOver) throw e;
+        if (M.isSignal(e)) throw e;
         console.error(e);
         this.log(`(rules error: ${e.message})`, 'err');
         this.touch();
@@ -2784,7 +2863,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (!item) return;
       this.touch();
       try { await M.resolveItem(this, item); }
-      catch (e) { if (e instanceof GameOver) throw e; console.error(e); this.log(`(rules error resolving ${item.obj && item.obj.name}: ${e.message})`, 'err'); if (item.kind === 'spell' && item.obj.zone === 'stack') { item.obj.zone = 'limbo'; this.move(item.obj, 'graveyard'); } }
+      catch (e) { if (M.isSignal(e)) throw e; console.error(e); this.log(`(rules error resolving ${item.obj && item.obj.name}: ${e.message})`, 'err'); if (item.kind === 'spell' && item.obj.zone === 'stack') { item.obj.zone = 'limbo'; this.move(item.obj, 'graveyard'); } }
       this.touch();
     }
 
@@ -2798,6 +2877,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
     }
     canBlock(b, a) {
       if (!M.isCreature(b) || b.tapped || M.chars(b).cantBlock) return false;
+      // the Ring-bearer can't be blocked by creatures with greater power
+      if (a.ringBearer && (a.controller.ringLevel || 0) >= 1 && M.power(b) > M.power(a)) return false;
       const ach = M.chars(a);
       if (ach.cantBeBlocked) return false;
       for (const cb of ach.cantBlockBy) if (cb.valid && M.matchValid(cb.valid, b, { game: this, src: cb.src, ctrl: cb.src.controller })) return false;
@@ -2831,6 +2912,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
         const o = d.attacker;
         o.attacking = d.defender || dp;
         o.attacksThisTurn = o.attackedTurn === this.turn ? (o.attacksThisTurn || 0) + 1 : 1;
+        // a level-2 Ring-bearer loots when it attacks
+        if (o.ringBearer && (o.controller.ringLevel || 0) >= 2) this.pendingTriggers.push({ src: o, ctrl: o.controller, str: 'DB$ Draw | Defined$ You | NumCards$ 1 | SubAbility$ RingDiscard', face: M.ringFace(), trig: {}, desc: 'The Ring' });
         o.attackedTurn = this.turn;
         ap.attackedThisTurn = true;
         if (!M.hasKW(o, 'Vigilance')) { o.tapped = true; }
@@ -3150,6 +3233,13 @@ if (typeof module !== 'undefined') module.exports = MTG;
       else if (/^(\d+|[WUBRGCXS]|[WUBRG2C]\/?[WUBRGP])$/.test(t)) manaToks.push(t); // hybrid/Phyrexian may be written "WB" or "W/B"
       else if ((m = /^Sac<(\d+|X)\/([^/>]+)(?:\/[^>]*)?>$/.exec(t))) { if (/^CARDNAME|^Self/.test(m[2])) c.sacSelf = true; else (c.sac = c.sac || []).push({ n: m[1] === 'X' ? 1 : +m[1], valid: m[2] }); }
       else if ((m = /^PayLife<(\d+)>$/.exec(t))) c.payLife = +m[1];
+      else if (/^PayLife<X>$/.test(t)) { c.payLifeX = true; c.xCost = true; }
+      else if ((m = /^Discard<X\/([^/>]+)(?:\/[^>]*)?>$/.exec(t))) { c.discard = { n: 'X', valid: m[1] }; c.xCost = true; }
+      else if ((m = /^ExileFromGrave<X\/([^/>]+)(?:\/[^>]*)?>$/.exec(t))) { c.exileGrave = { n: 'X', valid: m[1] }; c.xCost = true; }
+      else if ((m = /^Reveal<(\d+)\/([^/>]+)(?:\/[^>]*)?>$/.exec(t))) c.reveal = { n: +m[1], valid: m[2] };
+      else if ((m = /^Return<(\d+)\/([^/>]+)(?:\/[^>]*)?>$/.exec(t)) && !/CARDNAME/.test(m[2])) c.returnType = { n: +m[1], valid: m[2] };
+      else if ((m = /^Exile<(\d+)\/([^/>]+)(?:\/[^>]*)?>$/.exec(t)) && !/CARDNAME/.test(m[2])) c.exileField = { n: +m[1], valid: m[2] };
+      else if (t === 'Mandatory') { /* "unless" costs that must be paid if able */ }
       else if ((m = /^Discard<(\d+)\/([^/>]+)(?:\/[^>]*)?>$/.exec(t))) { if (m[2] === 'CARDNAME') c.discardSelf = true; else c.discard = { n: +m[1], valid: m[2] }; }
       else if ((m = /^AddCounter<(\d+|X)\/(\w+)(?:\/[^>]*)?>$/.exec(t))) c.addCounter = { n: m[1] === 'X' ? 0 : +m[1], type: m[2] };
       else if ((m = /^SubCounter<(\d+|X)\/(\w+)(?:\/[^>]*)?>$/.exec(t))) c.subCounter = { n: m[1] === 'X' ? 0 : +m[1], type: m[2], x: m[1] === 'X' };
@@ -3173,8 +3263,12 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (cost.payLife && pl.life < cost.payLife) return false;
     if (cost.subCounter && !cost.subCounter.x && (src.counters[cost.subCounter.type] || 0) < cost.subCounter.n) return false;
     if (cost.sac) for (const s of cost.sac) if (g.battlefield.filter(o => o.controller === pl && M.matchValid(s.valid, o, { game: g, src, ctrl: pl, lenient: true })).length < s.n) return false;
-    if (cost.discard) { const n = pl.hand.filter(o => o !== src && (cost.discard.valid === 'Hand' || M.matchValid(cost.discard.valid, o, { game: g, src, ctrl: pl, lenient: true }))).length; if (cost.discard.valid !== 'Hand' && n < cost.discard.n) return false; }
-    if (cost.exileGrave && pl.graveyard.filter(o => o !== src && M.matchValid(cost.exileGrave.valid, o, { game: g, src, ctrl: pl, lenient: true })).length < cost.exileGrave.n) return false;
+    const c0 = { game: g, src, ctrl: pl, lenient: true };
+    if (cost.discard && cost.discard.n !== 'X') { const n = pl.hand.filter(o => o !== src && (cost.discard.valid === 'Hand' || M.matchValid(cost.discard.valid, o, c0))).length; if (cost.discard.valid !== 'Hand' && n < cost.discard.n) return false; }
+    if (cost.exileGrave && cost.exileGrave.n !== 'X' && pl.graveyard.filter(o => o !== src && M.matchValid(cost.exileGrave.valid, o, c0)).length < cost.exileGrave.n) return false;
+    if (cost.reveal && pl.hand.filter(o => o !== src && M.matchValid(cost.reveal.valid, o, c0)).length < cost.reveal.n) return false;
+    if (cost.returnType && g.battlefield.filter(o => o.controller === pl && o !== src && M.matchValid(cost.returnType.valid, o, c0)).length < cost.returnType.n) return false;
+    if (cost.exileField && g.battlefield.filter(o => o.controller === pl && o !== src && M.matchValid(cost.exileField.valid, o, c0)).length < cost.exileField.n) return false;
     if (cost.tapType && g.battlefield.filter(o => o.controller === pl && !o.tapped && o !== src && M.matchValid(cost.tapType.valid, o, { game: g, src, ctrl: pl, lenient: true })).length < cost.tapType.n) return false;
     if (cost.energy && (pl.energy || 0) < cost.energy) return false;
     const mana = cost.mana;
@@ -3221,7 +3315,36 @@ if (typeof module !== 'undefined') module.exports = MTG;
   M.payCost = async function (g, pl, src, cost, extraGeneric, item) {
     const ctx = { game: g, src, ctrl: pl, lenient: true };
     // choose non-mana parts first (so they don't get tapped for mana)
-    let sacChosen = [], discChosen = [], exChosen = [], tapChosen = [];
+    let sacChosen = [], discChosen = [], exChosen = [], tapChosen = [], retChosen = [], exField = [];
+    // X paid with life, discards or graveyard exiles: choose X first
+    if (cost.xCost) {
+      const max = cost.payLifeX ? Math.max(0, pl.life - 1) : cost.discard && cost.discard.n === 'X' ? pl.hand.filter(o => o !== src && M.matchValid(cost.discard.valid, o, ctx)).length : pl.graveyard.filter(o => o !== src && M.matchValid(cost.exileGrave.valid, o, ctx)).length;
+      const x = await g.ask(pl, { type: 'x', card: src, max, prompt: `Choose X for ${src.name}` });
+      if (x == null) return false;
+      const X = Math.max(0, Math.min(max, x | 0));
+      if (item) item.x = X;
+      cost = Object.assign({}, cost, cost.payLifeX ? { payLife: X } : {}, cost.discard && cost.discard.n === 'X' ? { discard: Object.assign({}, cost.discard, { n: X }) } : {}, cost.exileGrave && cost.exileGrave.n === 'X' ? { exileGrave: Object.assign({}, cost.exileGrave, { n: X }) } : {});
+      if (cost.discard && !cost.discard.n) cost.discard = null;
+      if (cost.exileGrave && !cost.exileGrave.n) cost.exileGrave = null;
+    }
+    if (cost.reveal) {
+      const cands = pl.hand.filter(o => o !== src && M.matchValid(cost.reveal.valid, o, ctx));
+      const ch = await g.ask(pl, { type: 'chooseCards', prompt: `Reveal ${cost.reveal.n} (${cost.reveal.valid})`, cards: cands, min: cost.reveal.n, max: cost.reveal.n, purpose: 'reveal', card: src, cancelable: true });
+      if (!ch || ch.length < cost.reveal.n) return false;
+      g.log(`${pl.name} reveals ${ch.map(o => o.name).join(', ')}.`);
+    }
+    if (cost.returnType) {
+      const cands = g.battlefield.filter(o => o.controller === pl && o !== src && M.matchValid(cost.returnType.valid, o, ctx));
+      const ch = await g.ask(pl, { type: 'chooseCards', prompt: `Return ${cost.returnType.n} (${cost.returnType.valid}) to hand`, cards: cands, min: cost.returnType.n, max: cost.returnType.n, purpose: 'return', card: src, cancelable: true });
+      if (!ch || ch.length < cost.returnType.n) return false;
+      retChosen = ch;
+    }
+    if (cost.exileField) {
+      const cands = g.battlefield.filter(o => o.controller === pl && o !== src && M.matchValid(cost.exileField.valid, o, ctx));
+      const ch = await g.ask(pl, { type: 'chooseCards', prompt: `Exile ${cost.exileField.n} (${cost.exileField.valid})`, cards: cands, min: cost.exileField.n, max: cost.exileField.n, purpose: 'exile', card: src, cancelable: true });
+      if (!ch || ch.length < cost.exileField.n) return false;
+      exField = ch;
+    }
     if (cost.sac) for (const s of cost.sac) {
       const cands = g.battlefield.filter(o => o.controller === pl && M.matchValid(s.valid, o, ctx) && !sacChosen.includes(o));
       const ch = await g.ask(pl, { type: 'chooseCards', prompt: `Sacrifice ${s.n} (${s.valid})`, cards: cands, min: s.n, max: s.n, purpose: 'sacrifice', card: src });
@@ -3249,7 +3372,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (!ch || ch.length < cost.tapType.n) return false;
       tapChosen = ch;
     }
-    const exclude = [].concat(sacChosen, tapChosen, (cost.tap || cost.sacSelf) ? [src] : []);
+    const exclude = [].concat(sacChosen, tapChosen, retChosen, exField, (cost.tap || cost.sacSelf) ? [src] : []);
     const mana = cost.mana;
     if (mana.generic || mana.pips.length || extraGeneric) {
       if (!M.payMana(g, pl, mana, extraGeneric, exclude)) return false;
@@ -3257,6 +3380,9 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (cost.tap) { src.tapped = true; g.fire({ type: 'tap', card: src }); }
     if (cost.untap) src.tapped = false;
     if (cost.payLife) g.loseLife(pl, cost.payLife);
+    for (const o of retChosen) { o.zone = 'battlefield'; g.move(o, 'hand'); }
+    for (const o of exField) g.move(o, 'exile');
+    if (item && (retChosen.length || exField.length)) item.paidWith = retChosen.concat(exField);
     if (cost.energy) pl.energy -= cost.energy;
     if (cost.addCounter) { src.counters[cost.addCounter.type] = (src.counters[cost.addCounter.type] || 0) + cost.addCounter.n; }
     if (cost.subCounter) {
@@ -3429,7 +3555,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (en) {
         const valid = en.split(':')[1];
         const fake = { isStackItem: true, obj: o, controller: pl, node: null };
-        const node = { p: { ValidTgts: valid }, face: f };
+        const node = { p: { ValidTgts: valid, TgtZone: /inZoneGraveyard/.test(valid) ? 'Graveyard' : undefined }, face: f };
         return M.targetCandidates(g, fake, node, pl).length > 0;
       }
       return true;
@@ -3443,6 +3569,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
       return node.choices.some(c => ![...walk(c)].some(cc => M.nodeNeedsTargets(cc) && cc.p.TargetMin !== '0' && M.targetCandidates(g, fake, cc, pl).length === 0));
     }
     if (!M.nodeNeedsTargets(node)) return true;
+    // targets that depend on X ("mana value X") are checked once X is chosen
+    if ((f.cost.x || /X/.test(sa.p.Cost || '')) && /X/.test((node.p.ValidTgts || '') + (node.p.TargetMin || ''))) return true;
     const min = node.p.TargetMin != null ? M.evalNum(node.p.TargetMin, { game: g, src: o, ctrl: pl }, f) : 1;
     if (min === 0) return true;
     const fake = { isStackItem: true, obj: o, controller: pl, node, x: 0 };
@@ -3493,6 +3621,10 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (parts[0] === 'Unearth' && zone === 'graveyard') {
         const cost = parts[1];
         out.push({ str: 'AB$ ChangeZone | Defined$ Self | Origin$ Graveyard | Destination$ Battlefield | Unearth$ True', p: M.parseParams('AB$ ChangeZone | Defined$ Self | Origin$ Graveyard | Destination$ Battlefield | Unearth$ True'), cost: M.parseAbilityCost(cost), label: `Unearth {${cost}}`, kw: 'Unearth', sorcery: true });
+      }
+      if (parts[0] === 'Suspend' && zone === 'hand') {
+        const n = +parts[1] || 1, cost = parts[2] || '0';
+        out.push({ str: 'AB$ Suspend', p: { AB: 'Suspend' }, cost: M.parseAbilityCost(cost), label: `Suspend ${n} — {${cost}}`, kw: 'Suspend', n, sorcery: !f.keywords.includes('Flash') && !f.types.includes('Instant') });
       }
       if (parts[0] === 'Ninjutsu' || parts[0] === 'Level up') { /* not implemented */ }
     }
@@ -3562,7 +3694,8 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const o = action.card;
     const fi = action.faceIdx || 0;
     const from = action.from || 'hand';
-    const info = M.spellCostInfo(g, pl, o, fi, from, { faceDown: action.faceDown });
+    let info = M.spellCostInfo(g, pl, o, fi, from, { faceDown: action.faceDown });
+    if (action.free) info = Object.assign({}, info || { face: M.face(o.def.faces[fi] || o.def.faces[0]) }, { mana: { generic: 0, pips: [], x: 0, raw: '' }, extra: 0, addl: null, delve: 0 });
     if (!info) return false;
     const f = info.face;
     const item = { isStackItem: true, kind: 'spell', obj: o, controller: pl, faceIdx: fi, face: f, x: 0, kicked: 0, from, id: M.uid() };
@@ -3570,7 +3703,18 @@ if (typeof module !== 'undefined') module.exports = MTG;
     let xCount = info.mana.x;
     if (xCount) {
       const avail = M.totalManaAvailable(g, pl) - M.manaValue(info.mana) - Math.max(0, info.extra);
-      const x = await g.ask(pl, { type: 'x', card: o, max: Math.max(0, Math.floor(avail / xCount)), prompt: `Choose X for ${f.name}` });
+      const maxX = Math.max(0, Math.floor(avail / xCount));
+      // the computer picks X to fit the best target when the target depends on X ("mana value X")
+      let x;
+      const sa0 = spellAbility(f), tn = sa0 && M.buildTree(sa0.str, f);
+      if (pl.ctl && pl.ctl.isAI && tn && /X/.test(tn.p.ValidTgts || '')) {
+        let best = null, bestV = -1;
+        for (let v = 0; v <= maxX; v++) {
+          const cands = M.targetCandidates(g, Object.assign({}, item, { x: v, node: tn }), tn, pl).filter(c => !c.isPlayer && !c.isStackItem ? c.controller !== pl : c.controller !== pl);
+          for (const c of cands) { const val = c.isStackItem ? 5 + v : (M.AI.value(c) || 0); if (val > bestV) { bestV = val; best = v; } }
+        }
+        x = best == null ? 0 : best;
+      } else x = await g.ask(pl, { type: 'x', card: o, max: maxX, prompt: `Choose X for ${f.name}` });
       if (x == null) return false;
       item.x = Math.max(0, x | 0);
     }
@@ -3591,11 +3735,14 @@ if (typeof module !== 'undefined') module.exports = MTG;
         const en = f.keywords.find(k => k.startsWith('Enchant:'));
         const valid = en ? en.split(':')[1] : 'Creature';
         item.node = { api: 'Attach', kind: 'SP', p: { ValidTgts: valid }, face: f, targets: [], aura: true };
+        if (/inZoneGraveyard/.test(valid)) item.node.p.TgtZone = 'Graveyard'; // Animate Dead and friends
       } else item.node = null;
     } else {
       const sa = spellAbility(f);
       item.node = sa ? M.buildTree(sa.str, f) : null;
     }
+    // "X target ..." can't ask for more targets than there are
+    if (item.x && item.node) for (const nd of walk(item.node)) if (nd.p && nd.p.TargetMin === 'X') { const c = M.targetCandidates(g, item, nd, pl).length; if (item.x > c) item.x = c; }
     // targets & modes
     if (item.node) {
       const ok = await M.chooseTargetsForTree(g, item, pl);
@@ -3684,6 +3831,13 @@ if (typeof module !== 'undefined') module.exports = MTG;
   M.activate = async function (g, pl, action) {
     const o = action.card, ab = action.ab;
     if (!M.canActivate(g, pl, o, ab)) return false;
+    if (ab.kw === 'Suspend') {
+      if (!(await M.payCost(g, pl, o, ab.cost, 0, null))) return false;
+      g.removeFromZone(o); o.zone = 'limbo'; g.move(o, 'exile');
+      o.suspended = true; o.counters.TIME = ab.n;
+      g.log(`${pl.name} suspends ${o.name} with ${ab.n} time counter${ab.n === 1 ? '' : 's'}.`, 'cast');
+      return true;
+    }
     if (ab.kw === 'TurnFaceUp') {
       if (!(await M.payCost(g, pl, o, ab.cost, 0, null))) return false;
       M.turnFaceUp(g, o, ab.special);
@@ -3724,6 +3878,18 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (ab.kw === 'Cycling') g.fire({ type: 'cycled', card: o, player: pl });
     M.fireTargeted(g, item);
     return true;
+  };
+  // suspend: at its owner's upkeep remove a time counter; when the last is removed, cast it free (a creature gets haste)
+  M.tickSuspend = async function (g, c) {
+    if (!c.suspended || c.zone !== 'exile') return;
+    c.counters.TIME = Math.max(0, (c.counters.TIME || 0) - 1);
+    g.log(`${c.name} has ${c.counters.TIME} time counter${c.counters.TIME === 1 ? '' : 's'} left.`);
+    if (c.counters.TIME > 0) return;
+    c.suspended = false;
+    const pl = c.owner;
+    const ok = await M.castSpell(g, pl, { kind: 'cast', card: c, faceIdx: 0, from: 'exile', free: true });
+    if (ok) { const it = g.stack[g.stack.length - 1]; if (it && it.obj === c) it.fromSuspend = true; }
+    else g.log(`${c.name} can't be cast and stays in exile.`);
   };
   // turn a face-down permanent face up: it keeps counters, damage and its tapped state
   M.turnFaceUp = function (g, o, kind) {
@@ -3779,7 +3945,20 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (item.node && item.node.aura) {
         const t = item.node.targets[0];
         const host = t && M.refThing(t);
-        if (!host || host.isPlayer || host.zone !== 'battlefield') { g.move(o, 'graveyard'); return; }
+        if (host && host.isPlayer) {
+          g.move(o, 'battlefield', { controller: item.controller, faceIdx: item.faceIdx });
+          o.attachedPlayer = host.id;
+          g.log(`${o.name} enters the battlefield enchanting ${host.name}.`, 'etb');
+          return;
+        }
+        if (host && host.zone === 'graveyard' && /inZoneGraveyard/.test(item.node.p.ValidTgts || '')) {
+          // enchanting a card in a graveyard: its "enters" ability brings that card back
+          g.move(o, 'battlefield', { controller: item.controller, faceIdx: item.faceIdx });
+          o.attachedTo = host.id; o.enchantingGrave = true;
+          g.log(`${o.name} enters the battlefield enchanting ${host.name} in a graveyard.`, 'etb');
+          return;
+        }
+        if (!host || host.zone !== 'battlefield') { g.move(o, 'graveyard'); return; }
         g.suppressTriggers = false;
         const ci = o.castInfo;
         g.move(o, 'battlefield', { controller: item.controller, faceIdx: item.faceIdx });
@@ -3789,6 +3968,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       } else {
         const kicked = item.kicked, x = item.x, ci = o.castInfo;
         g.move(o, 'battlefield', { controller: item.controller, faceIdx: item.faceIdx, kicked, x, castInfo: ci, faceDown: item.faceDown, ward: item.ward });
+        if (item.fromSuspend && M.isCreature(o)) o.pumps.push({ p: 0, t: 0, until: 'perm', kw: ['Haste'] });
         o.kicked = kicked; o.xPaid = x; o.castInfo = ci;
       }
       g.log(`${o.name} enters the battlefield.`, 'etb');
@@ -3878,6 +4058,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
         case 'TriggeredAttacker': case 'TriggeredAttackerLKICopy': if (ctx.trig && (ctx.trig.attacker || ctx.trig.card)) out.push(ctx.trig.attacker || ctx.trig.card); continue;
         case 'TriggeredBlocker': if (ctx.trig && ctx.trig.blocker) out.push(ctx.trig.blocker); continue;
         case 'TriggeredTarget': if (ctx.trig && ctx.trig.target) out.push(ctx.trig.target); continue;
+        case 'EnchantedPlayer': if (ctx.src && ctx.src.attachedPlayer != null) out.push(g.players[ctx.src.attachedPlayer]); continue;
         case 'DelayTriggerRemembered': case 'DelayTriggerRememberedLKI': case 'DelayTriggerRemembered.Creature': out.push(...(ctx.remembered || [])); continue;
         case 'ReplacedTarget': case 'ReplacedTargetLKICopy': if (ctx.replaced && ctx.replaced.target) out.push(ctx.replaced.target); continue;
         case 'ReplacedSource': case 'ReplacedSourceLKICopy': if (ctx.replaced && ctx.replaced.source) out.push(ctx.replaced.source); continue;
@@ -3959,7 +4140,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       if (fn) {
         ctx.curNode = node; // lets "Targeted.sameName"-style selectors find this effect's targets
         try { await fn(g, node, ctx); }
-        catch (e) { if (e instanceof M.GameOver) throw e; console.error(e); g.log(`(error in ${node.api}: ${e.message})`, 'err'); }
+        catch (e) { if (M.isSignal(e)) throw e; console.error(e); g.log(`(error in ${node.api}: ${e.message})`, 'err'); }
       } else {
         g.unsupported.add(node.api);
         g.log(`(${ctx.src ? ctx.src.name + ': ' : ''}"${node.api}" effect isn't supported yet — skipped)`, 'err');
@@ -4617,11 +4798,69 @@ if (typeof module !== 'undefined') module.exports = MTG;
     ctx.src.storedSVars = ctx.src.storedSVars || {};
     ctx.src.storedSVars[p.SVar] = v;
   };
-  for (const noop of ['Reveal', 'RevealHand', 'Shuffle', 'LookAt', 'Pump_', 'AlterAttribute', 'ChangeTargets', 'TwoPiles', 'Vote', 'RollDice', 'ChooseDirection', 'NameCard', 'Seek', 'Venture', 'Ring', 'TakeInitiative', 'BecomeMonarch']) {
+  for (const noop of ['Reveal', 'RevealHand', 'Shuffle', 'LookAt', 'Pump_', 'AlterAttribute', 'ChangeTargets', 'TwoPiles', 'RollDice', 'ChooseDirection', 'NameCard', 'Seek', 'Venture', 'Ring', 'TakeInitiative', 'BecomeMonarch']) {
     if (!API[noop]) API[noop] = async () => {};
   }
   API.Shuffle = async (g, node, ctx) => { for (const pl of players(affected(node, ctx, 'you'))) shuffle(g, pl); };
-  API.BecomeMonarch = async (g, node, ctx) => { g.log(`${ctx.ctrl.name} becomes the monarch (monarch not tracked).`); };
+  API.BecomeMonarch = async (g, node, ctx) => { const pl = players(resolveDefined(node.p.Defined || 'You', ctx, node))[0] || ctx.ctrl; M.setMonarch(g, pl); };
+  M.setMonarch = (g, pl) => { if (g.monarch === pl) return; g.monarch = pl; g.log(`${pl.name} becomes the monarch.`, 'big'); g.fire({ type: 'monarch', player: pl }); g.touch(); };
+  // the Ring tempts you: it grows stronger and you choose a Ring-bearer
+  const RING_FACE = () => M.face({ n: 'The Ring', c: 'no cost', t: 'Emblem', o: '', SV: { RingDiscard: 'DB$ Discard | Defined$ You | NumCards$ 1 | Mode$ TgtChoose' } });
+  API.RingTemptsYou = async (g, node, ctx) => {
+    const pl = ctx.ctrl;
+    pl.ringLevel = Math.min(4, (pl.ringLevel || 0) + 1);
+    const mine = g.battlefield.filter(o => o.controller === pl && M.isCreature(o));
+    let bearer = null;
+    if (mine.length) {
+      if (pl.ctl && pl.ctl.isAI) bearer = mine.slice().sort((a, b) => M.AI.value(b) - M.AI.value(a))[0];
+      else { const ch = await chooseCards(g, pl, mine, 1, 1, 'The Ring tempts you: choose your Ring-bearer', 'choose'); bearer = (ch && ch[0]) || mine[0]; }
+      for (const o of g.battlefield) if (o.controller === pl) o.ringBearer = false;
+      bearer.ringBearer = true;
+    }
+    g.log(`The Ring tempts ${pl.name} (level ${pl.ringLevel})${bearer ? `; ${bearer.name} is the Ring-bearer` : ''}.`);
+    g.fire({ type: 'ringTempts', player: pl });
+  };
+  M.ringFace = RING_FACE;
+  // will of the council: each player votes; the most votes wins (ties go to the tie option, if any)
+  API.Vote = async (g, node, ctx) => {
+    const p = node.p;
+    const voters = players(resolveDefined(p.Defined || 'Player', ctx, node));
+    if (p.Choices) {
+      const names = p.Choices.split(',').map(s => s.trim()).filter(s => node.face.svars[s]);
+      const opts = names.map(nm => M.buildTree(node.face.svars[nm], node.face, node));
+      const tally = names.map(() => 0);
+      for (const v of voters) {
+        let i = 0;
+        if (v.ctl && v.ctl.isAI) { const own = names.map((nm, k) => M.AI.scoreNode ? M.AI.scoreNode(g, v, opts[k]) : 0); i = own.indexOf(Math.max(...own)); if (i < 0) i = Math.floor(g.rng() * names.length); }
+        else { const r = await g.ask(v, { type: 'modes', node, item: { obj: ctx.src, controller: v, node }, options: opts, min: 1, max: 1 }); i = Math.max(0, opts.indexOf(r && r[0])); }
+        tally[i]++;
+        g.log(`${v.name} votes for option ${i + 1}.`);
+      }
+      const best = Math.max(...tally);
+      const winners = names.filter((_, k) => tally[k] === best);
+      const win = winners.length > 1 && p.VoteTiedAbility ? p.VoteTiedAbility : winners[0];
+      if (win && node.face.svars[win]) await M.execNode(g, M.buildTree(node.face.svars[win], node.face, node), ctx);
+      return;
+    }
+    if (p.VoteCard) {
+      // vote for a card: each player picks one; the most-voted card is remembered
+      const zone = ZONE[p.Zone || 'Graveyard'] || 'graveyard';
+      const pool = (zone === 'battlefield' ? g.battlefield : g.allIn(zone)).filter(o => M.matchValid(p.VoteCard, o, ctx));
+      if (!pool.length) return;
+      const tally = new Map();
+      for (const v of voters) {
+        let pick;
+        const good = pool.slice().sort((a, b) => M.AI.value(b) - M.AI.value(a));
+        if (v.ctl && v.ctl.isAI) pick = v === ctx.ctrl ? good[0] : good[good.length - 1];
+        else { const ch = await chooseCards(g, v, pool, 1, 1, 'Vote for a card', 'choose'); pick = ch && ch[0]; }
+        if (pick) tally.set(pick, (tally.get(pick) || 0) + 1);
+      }
+      const top = Math.max(...tally.values());
+      const chosen = [...tally].filter(([, k]) => k === top).map(([o]) => o);
+      remember(ctx, node, chosen);
+      if (p.VoteSubAbility && node.face.svars[p.VoteSubAbility]) await M.execNode(g, M.buildTree(node.face.svars[p.VoteSubAbility], node.face, node), ctx);
+    }
+  };
 
   API.LosesGame = async (g, node, ctx) => { for (const pl of players(affected(node, ctx, 'you'))) { pl.life = 0; } };
   API.WinsGame = async (g, node, ctx) => { g.opponent(ctx.ctrl).life = 0; };
@@ -4838,6 +5077,108 @@ if (typeof module !== 'undefined') module.exports = MTG;
     if (taken.length) g.log(`${pl.name} takes ${taken.map(c => c.name).join(', ')}.`);
   };
   API.BlankLine = async () => {};
+  API.ReorderZone = async () => {}; // graveyard order doesn't matter in this game
+  API.EndTurn = async (g) => { g.log('Time stops: the turn ends.', 'big'); throw new M.EndTurnSignal(); };
+  API.DayTime = async (g, node) => { const v = node.p.Value; if (v === 'Day' || v === 'Night') g.setDayNight(v.toLowerCase()); else if (v === 'Switch') g.setDayNight(g.dayNight === 'day' ? 'night' : 'day'); };
+  // gain control of a spell: it resolves (and its permanent enters) under your control
+  API.ControlSpell = async (g, node, ctx) => {
+    for (const it of (node.targets || []).map(M.refThing).filter(x => x && x.isStackItem)) { it.controller = ctx.ctrl; if (it.obj) it.obj.controller = ctx.ctrl; g.log(`${ctx.ctrl.name} gains control of ${it.face ? it.face.name : 'a spell'}.`); }
+  };
+  // control another player's next turn
+  API.ControlPlayer = async (g, node, ctx) => {
+    const who = players(node.targets && node.targets.length ? nodeTargets(node) : resolveDefined(node.p.Defined || 'Opponent', ctx, node));
+    const by = players(resolveDefined(node.p.Controller || 'You', ctx, node))[0] || ctx.ctrl;
+    g.controlNext = g.controlNext || {};
+    for (const pl of who) if (pl !== by) { g.controlNext[pl.id] = by; g.log(`${by.name} will control ${pl.name} during their next turn.`); }
+  };
+  API.ChooseEvenOdd = async (g, node, ctx) => {
+    const me = ctx.ctrl;
+    const worth = par => g.battlefield.filter(o => M.isCreature(o) && M.manaValue(o.face.cost) % 2 === par).reduce((a, o) => a + (o.controller === me ? -1 : 1) * M.AI.value(o), 0);
+    let odd;
+    if (me.ctl && me.ctl.isAI) odd = worth(1) > worth(0);
+    else odd = await g.ask(me, { type: 'yesno', prompt: 'Choose odd? (Yes = odd, No = even)', card: ctx.src, purpose: 'choose' });
+    ctx.chosenEvenOdd = odd ? 'odd' : 'even'; if (ctx.src) ctx.src.chosenEvenOdd = ctx.chosenEvenOdd;
+    g.log(`${me.name} chooses ${ctx.chosenEvenOdd}.`);
+  };
+  // exchange the text boxes of two creatures while the source stays on the battlefield
+  API.ExchangeTextBox = async (g, node, ctx) => {
+    const [a, b] = cards(nodeTargets(node)).filter(o => o.zone === 'battlefield');
+    if (!a || !b) return;
+    const text = f => ({ o: f.o, A: f.A, T: f.T, S: f.S, K: f.K, R: f.R, SV: f.SV });
+    const fa = a.def.faces[a.faceIdx], fb = b.def.faces[b.faceIdx];
+    const da = { alt: a.def.alt, faces: a.def.faces.map((f, i) => i === a.faceIdx ? Object.assign({}, f, text(fb)) : f) };
+    const db = { alt: b.def.alt, faces: b.def.faces.map((f, i) => i === b.faceIdx ? Object.assign({}, f, text(fa)) : f) };
+    const oa = a.def, ob = b.def;
+    a.def = da; b.def = db; a._abCache = null; b._abCache = null;
+    g.log(`${a.name} and ${b.name} exchange text boxes.`);
+    const src = ctx.src;
+    if (src) g.delayed.push({ once: true, match: ev => { if (ev.type === 'zone' && ev.card === src && ev.from === 'battlefield') { if (a.def === da) a.def = oa; if (b.def === db) b.def = ob; a._abCache = null; b._abCache = null; } return false; }, make: () => null });
+  };
+  // draft one card from a spellbook (three offered at random)
+  API.Draft = async (g, node, ctx) => {
+    const book = (node.p.Spellbook || '').split(',').map(s => s.trim()).filter(nm => g.db.cards[nm]);
+    if (!book.length) return;
+    const offer = [];
+    const pool = book.slice();
+    while (offer.length < 3 && pool.length) offer.push(pool.splice(Math.floor(g.rng() * pool.length), 1)[0]);
+    const objs = offer.map(nm => { const o = g.newObj(g.db.cards[nm], ctx.ctrl); o.zone = 'limbo'; return o; });
+    let pick = objs[0];
+    if (ctx.ctrl.ctl && ctx.ctrl.ctl.isAI) pick = objs.slice().sort((x, y) => M.manaValue(y.face.cost) - M.manaValue(x.face.cost))[0];
+    else { const ch = await chooseCards(g, ctx.ctrl, objs, 1, 1, 'Draft a card', 'choose'); if (ch && ch[0]) pick = ch[0]; }
+    g.move(pick, 'hand');
+    g.log(`${ctx.ctrl.name} drafts ${pick.name}.`);
+  };
+  // blight N: put N -1/-1 counters on a creature you control
+  API.Blight = async (g, node, ctx) => {
+    const pl = players(resolveDefined(node.p.Defined || 'You', ctx, node))[0] || ctx.ctrl;
+    const pool = g.battlefield.filter(o => o.controller === pl && M.isCreature(o));
+    if (!pool.length) return;
+    let pick;
+    if (pl.ctl && pl.ctl.isAI) pick = pool.slice().sort((a, b) => M.AI.value(a) - M.AI.value(b))[0];
+    else { const ch = await chooseCards(g, pl, pool, 1, 1, `Blight ${n(node.p.Num, ctx, node, 1)}: choose a creature to get -1/-1 counters`, 'choose'); pick = ch && ch[0]; }
+    if (pick) { g.addCounters(pick, 'M1M1', n(node.p.Num, ctx, node, 1)); g.log(`${pick.name} gets -1/-1 counter(s) (blight).`); }
+  };
+  // Space sculptor sectors: each creature is in alpha, beta or gamma
+  M.sectorOf = o => o.sector || (o.sector = ['alpha', 'beta', 'gamma'][o.id % 3]);
+  API.ChooseSector = async (g, node, ctx) => {
+    const me = ctx.ctrl;
+    const sub = node.face.svars[node.p.SubAbility] || '';
+    const harmful = /Destroy/.test(sub);
+    const score = s => g.battlefield.filter(o => M.isCreature(o) && M.sectorOf(o) === s).reduce((a, o) => a + (o.controller === me ? 1 : -1) * (harmful ? -1 : 1) * M.AI.value(o), 0);
+    const pick = ['alpha', 'beta', 'gamma'].sort((a, b) => score(b) - score(a))[0];
+    ctx.chosenSector = pick; if (ctx.src) ctx.src.chosenSector = pick;
+    g.log(`${me.name} chooses the ${pick} sector.`);
+  };
+  // separate permanents into piles; a random pile is sacrificed
+  API.MultiplePiles = async (g, node, ctx) => {
+    const k = n(node.p.Piles, ctx, node, 3);
+    const doomed = [];
+    for (const pl of g.players) {
+      const mine = g.battlefield.filter(o => o.controller === pl && M.matchValid(node.p.ValidCards || 'Permanent', o, ctx)).sort((a, b) => M.AI.value(b) - M.AI.value(a));
+      const piles = Array.from({ length: k }, () => []);
+      mine.forEach((o, i) => piles[i % k].push(o));
+      const pick = piles[Math.floor(g.rng() * k)];
+      g.log(`${pl.name} sacrifices a random pile of ${pick.length} permanent${pick.length === 1 ? '' : 's'}.`);
+      doomed.push(...pick);
+    }
+    for (const o of doomed) if (o.zone === 'battlefield') g.sacrifice(o);
+  };
+  // friend or foe: friends copy a creature they control, foes return one to hand
+  API.AssignGroup = async (g, node, ctx) => {
+    for (const pl of g.players) {
+      const mine = g.battlefield.filter(o => o.controller === pl && M.isCreature(o)).sort((a, b) => M.AI.value(b) - M.AI.value(a));
+      if (!mine.length) continue;
+      if (pl === ctx.ctrl) { g.createCopyToken(mine[0], pl); g.log(`${pl.name} (friend) copies ${mine[0].name}.`); }
+      else { const o = mine[mine.length - 1]; o.zone = 'battlefield'; g.move(o, 'hand'); g.log(`${pl.name} (foe) returns ${o.name} to hand.`); }
+    }
+  };
+  // time travel: remove a time counter from each of your suspended cards; add one to your permanents with time counters
+  API.TimeTravel = async (g, node, ctx) => {
+    const pl = ctx.ctrl;
+    for (const c of pl.exile.filter(x => x.suspended).slice()) await M.tickSuspend(g, c);
+    for (const o of g.battlefield.filter(x => x.controller === pl && x.counters.TIME > 0)) o.counters.TIME++;
+    g.log(`${pl.name} time travels.`);
+  };
   // effects that only matter with more than two players or in Planechase: nothing to do in a 1v1 game
   for (const k of ['ReverseTurnOrder', 'RollPlanarDice', 'Planeswalk', 'ChaosEnsues']) API[k] = async () => {};
   API.DrainMana = async (g, node, ctx) => { for (const pl of g.players) if (pl !== ctx.ctrl) for (const c in pl.pool) pl.pool[c] = 0; };
@@ -4896,18 +5237,20 @@ if (typeof module !== 'undefined') module.exports = MTG;
     const me = ctx.src;
     // "enter as a copy of a permanent of your choice"
     if (!src && node.p.Choices && me) {
-      const pool = g.battlefield.filter(o => o !== me && M.matchValid(node.p.Choices, o, ctx));
+      const zone = node.p.ChoiceZone ? ZONE[node.p.ChoiceZone] || 'battlefield' : 'battlefield';
+      const pool = (zone === 'battlefield' ? g.battlefield : g.allIn(zone)).filter(o => o !== me && M.matchValid(node.p.Choices, o, ctx));
       if (pool.length) {
         if (ctx.ctrl.ctl && ctx.ctrl.ctl.isAI) src = pool.slice().sort((a, b) => M.AI.value(b) - M.AI.value(a))[0];
         else { const ch = await chooseCards(g, ctx.ctrl, pool, 0, 1, `Choose a permanent for ${me.name} to copy (or none)`, 'choose'); src = ch && ch[0]; }
       }
     }
+    if (me) me.pendingCopy = false;
     if (!src || !me) return;
     me.def = { faces: src.def.faces, alt: src.def.alt }; me.faceIdx = src.faceIdx || 0; me._abCache = null;
+    g.touch();
     g.log(`${me.controller.name}'s clone becomes a copy of ${src.name}.`);
   };
   API.Destroy_ = API.Destroy;
-  API.RingTemptsYou = async (g, node, ctx) => { g.log(`The Ring tempts ${ctx.ctrl.name}.`); };
   API.Radiation = async (g, node, ctx) => {
     const num = n(node.p.Num, ctx, node, 1);
     for (const pl of players(affected(node, ctx, 'you'))) { if (num > 0) { pl.rad = (pl.rad || 0) + num; g.log(`${pl.name} gets ${num} rad counter${num === 1 ? '' : 's'}.`); } }
@@ -5762,6 +6105,15 @@ if (typeof module !== 'undefined') module.exports = MTG;
     },
   };
   // The horde: never casts from hand or activates abilities, attacks with everything, never blocks
+  // plays a turn for someone else's benefit: never casts, attacks or blocks
+  AI.passiveController = {
+    isAI: true,
+    async ask(g, pl, req) {
+      if (req.type === 'priority') return { kind: 'pass' };
+      if (req.type === 'attackers' || req.type === 'blockers') return [];
+      return AI.controller.ask(g, pl, req);
+    },
+  };
   AI.hordeController = {
     isAI: true, isHorde: true,
     async ask(g, pl, req) {
@@ -6603,7 +6955,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
 
   // ---------------------------------------------------------------- boot
   async function boot() {
-    $('#app').innerHTML = `<div class="loading"><div class="ld-title">Planeswalker's Table</div><div class="ld-sub">Loading 14,000 cards and every preconstructed deck…</div><div class="ld-bar"><i></i></div></div>`;
+    $('#app').innerHTML = `<div class="loading"><div class="ld-title">Magic, the Soloing</div><div class="ld-sub">Loading 14,000 cards and every preconstructed deck…</div><div class="ld-bar"><i></i></div></div>`;
     try {
       const r = await fetch('data.json');
       DATA = await r.json();
@@ -6751,7 +7103,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
     <div class="setup">
       ${resumeBanner}
       <header class="setup-head">
-        <div class="brand"><span class="brand-mark">◈</span><div><h1>Planeswalker's Table</h1><p>Play any preconstructed deck against the computer, or hold off a themed horde.</p></div></div>
+        <div class="brand"><span class="brand-mark">◈</span><div><h1>Magic, the Soloing</h1><p>Play any preconstructed deck against the computer, or hold off a themed horde.</p></div></div>
         <div class="modes" role="tablist">
           <button class="mode ${S.mode === 'constructed' ? 'on' : ''}" data-mode="constructed" role="tab"><b>Standard</b><small>60 cards · 20 life</small></button>
           <button class="mode ${S.mode === 'commander' ? 'on' : ''}" data-mode="commander" role="tab"><b>Commander</b><small>100 cards · ${S.life} life · 1v1</small></button>
@@ -6789,7 +7141,7 @@ if (typeof module !== 'undefined') module.exports = MTG;
       </section>
       <footer class="legal">
         ${M.Art && M.Art.enabled ? `<label class="stopall"><input type="checkbox" id="artToggle" ${M.Art.isOn() ? 'checked' : ''}> Show card art from Scryfall</label>` : ''}
-        <p>Planeswalker's Table is unofficial Fan Content permitted under the Fan Content Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.${M.Art && M.Art.enabled ? ' Card images are provided by <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>.' : ''} Card rules from the Forge project; decklists from taw/magic-preconstructed-decks.</p>
+        <p>Magic, the Soloing is unofficial Fan Content permitted under the Fan Content Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.${M.Art && M.Art.enabled ? ' Card images are provided by <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>.' : ''} Card rules from the Forge project; decklists from taw/magic-preconstructed-decks.</p>
       </footer>
     </div>`;
     bindSetup();

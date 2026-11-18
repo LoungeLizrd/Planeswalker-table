@@ -1,6 +1,6 @@
 {
- "name": "Planeswalker's Table",
- "short_name": "Planeswalker",
+ "name": "Magic, the Soloing",
+ "short_name": "Soloing",
  "description": "Play Magic: The Gathering against the computer in Standard, Commander or Horde mode.",
  "start_url": "./",
  "scope": "./",
